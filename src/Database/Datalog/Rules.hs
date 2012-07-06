@@ -12,11 +12,13 @@ module Database.Datalog.Rules (
   assertRule,
   relationPredicateFromName,
   rulePredicates,
+  issueQuery,
   runQuery
   ) where
 
 import Control.Failure
 import Control.Monad.State.Strict
+import Data.Hashable
 import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
 import Data.Maybe ( mapMaybe )
@@ -44,6 +46,17 @@ data Term a = LogicVar !Text
             | Atom a
               -- ^ A user-provided literal from the domain a
 
+instance (Hashable a) => Hashable (Term a) where
+  hash (LogicVar t) = hash t `combine` 1
+  hash (BindVar t) = hash t `combine` 2
+  hash (Atom a) = hash a
+
+instance (Eq a) => Eq (Term a) where
+  (LogicVar t1) == (LogicVar t2) = t1 == t2
+  (BindVar t1) == (BindVar t2) = t1 == t2
+  (Atom a1) == (Atom a2) = a1 == a2
+  _ == _ = False
+
 data Clause a = Clause { clausePredicate :: Predicate
                        , clauseTerms :: [Term a]
                        }
@@ -67,7 +80,7 @@ data Rule a = Rule { ruleHead :: AdornedClause a
                    , ruleBody :: [Literal AdornedClause a]
                    }
 
-newtype Query a = Query { unQuery :: Clause a }
+newtype Query a = Query { unQuery :: AdornedClause a }
 
 infixr 0 |-
 
@@ -79,11 +92,6 @@ assertRule :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> Quer
 assertRule h b = do
   s <- get
   put s { queryRules = (h, b) : queryRules s }
-
-adornLiteral :: Literal Clause a
-                -> ([Literal AdornedClause a], HashSet (Term a))
-                -> ([Literal AdornedClause a], HashSet (Term a))
-adornLiteral = undefined
 
 -- | Retrieve a Relation handle from the IDB.  If the Relation does
 -- not exist, an error will be raised.
@@ -111,18 +119,69 @@ literalClausePredicate bc =
 rulePredicates :: Rule a -> [Predicate]
 rulePredicates (Rule h bcs) = adornedClausePredicate h : mapMaybe literalClausePredicate bcs
 
-adornRules :: (Failure DatalogError m)
-              => Query a -> [(Clause a, [Literal Clause a])] -> m [Rule a]
-adornRules = undefined
+issueQuery :: (Failure DatalogError m) => Clause a -> m (Query a)
+issueQuery = return . adornQuery
+
+-- If the query has a bound literal, that influences the rules it
+-- corresponds to.  Other rules are not affected.  Those positions
+-- bound in the query are bound in the associated rules.
+--
+-- Note: all variables in the head must appear in the body
+adornRule :: (Failure DatalogError m, Eq a, Hashable a)
+              => Query a -> (Clause a, [Literal Clause a]) -> m (Rule a)
+adornRule q (hd, lits) = do
+  (vmap, Literal hd') <- adornLiteral mempty (Literal hd)
+  (_, lits') <- mapAccumM adornLiteral vmap lits
+  return $! Rule hd' lits'
+
+adornQuery :: Clause a -> Query a
+adornQuery (Clause p ts) = Query $ AdornedClause p $ map adorn ts
+  where
+    adorn t@(LogicVar _) = (t, Free)
+    -- BoundVars will become bound by the time this matters
+    adorn t = (t, Bound)
+
+adornLiteral :: (Failure DatalogError m, Eq a, Hashable a)
+                => HashSet (Term a)
+                -> Literal Clause a
+                -> m (HashSet (Term a), Literal AdornedClause a)
+adornLiteral boundVars lit =
+  case lit of
+    Literal c -> adornClause Literal c
+    NegatedLiteral c -> adornClause NegatedLiteral c
+    ConditionalClause f ts -> return (boundVars, ConditionalClause f ts)
+  where
+    adornClause constructor (Clause p ts) = do
+      (bound', ts') <- mapAccumM adornTerm boundVars ts
+      let c' = constructor $ AdornedClause p ts'
+      return (bound', c')
+    adornTerm bvs t =
+      case t of
+        -- Atoms are always bound
+        Atom _ -> return (bvs, (t, Bound))
+        BindVar _ -> error "Bind variables are only allowed in queries"
+        LogicVar _ ->
+          -- The first occurrence is Free, while the rest are Bound
+          case HS.member t bvs of
+            True -> return (bvs, (t, Bound))
+            False -> return (HS.insert t bvs, (t, Free))
 
 -- | Run the QueryMonad action to build a query and initial rule
 -- database
 --
 -- Rules are adorned (marking each variable as Free or Bound as they
 -- appear) before being returned.
-runQuery :: (Failure DatalogError m)
+runQuery :: (Failure DatalogError m, Eq a, Hashable a)
             => QueryMonad m a (Query a) -> Database a -> m (Query a, [Rule a])
 runQuery qm idb = do
   (q, QueryState _ rs) <- runStateT qm (QueryState idb [])
-  rs' <- adornRules q rs
+  rs' <- mapM (adornRule q) rs
   return (q, rs')
+
+
+mapAccumM :: (Monad m, MonadPlus p) => (acc -> x -> m (acc, y)) -> acc -> [x] -> m (acc, p y)
+mapAccumM _ z [] = return (z, mzero)
+mapAccumM f z (x:xs) = do
+  (z', y) <- f z x
+  (z'', ys) <- mapAccumM f z' xs
+  return (z'', return y `mplus` ys)

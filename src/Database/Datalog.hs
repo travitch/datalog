@@ -11,6 +11,7 @@ module Database.Datalog (
   ) where
 
 import Control.Failure
+import Data.Hashable
 import Data.Text ( Text )
 
 import Database.Datalog.Database
@@ -22,10 +23,10 @@ import Database.Datalog.Stratification
 -- | A fully-stratified query plan
 data QueryPlan a = QueryPlan [[Rule a]]
 
--- | This is a shortcut ot build a query plan and execute in one step,
+-- | This is a shortcut to build a query plan and execute in one step,
 -- with no bindings provided.  It doesn't make sense to have bindings
 -- in one-shot queries.
-queryDatabase :: (Failure DatalogError m)
+queryDatabase :: (Failure DatalogError m, Eq a, Hashable a)
                  => Database a -- ^ The intensional database of facts
                  -> QueryMonad m a (Query a) -- ^ A monad building up a set of rules and returning a Query
                  -> m [Tuple a]
@@ -36,7 +37,7 @@ queryDatabase idb qm = do
 -- | Given a query description, build a query plan by stratifying the
 -- rules and performing the magic sets transformation.  Throws an
 -- error if the rules cannot be stratified.
-buildQueryPlan :: (Failure DatalogError m)
+buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a)
                   => Database a
                   -> QueryMonad m a (Query a)
                   -> m (QueryPlan a)
