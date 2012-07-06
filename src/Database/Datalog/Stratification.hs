@@ -56,7 +56,7 @@ stratifyRules rs =
 assignRule :: HashMap Predicate Int -> Rule a -> IntMap [Rule a] -> IntMap [Rule a]
 assignRule stratumNumbers r = IM.insertWith (++) snum [r]
   where
-    headPred = clausePredicate (ruleHead r)
+    headPred = adornedClausePredicate (ruleHead r)
     Just snum = HM.lookup headPred stratumNumbers
 
 -- | Compute the stratum number for each 'Predicate'.  This requires a
@@ -122,15 +122,15 @@ makeRuleDepGraph rs = mkGraph ns es
     -- each predicate in the body.  The edge should have a DepNegated
     -- label if the clause is a negated clause.
     ruleToEdges r acc =
-      let headPred = clausePredicate (ruleHead r)
+      let headPred = adornedClausePredicate (ruleHead r)
           src = predToId headPred
       in foldr (toEdge src) acc (ruleBody r)
     toEdge src bc acc =
       case bc of
         ConditionalClause _ _ -> acc
-        NegatedClause (Clause h _) ->
+        NegatedLiteral (AdornedClause h _) ->
           LEdge (Edge src (predToId h)) DepNegated : acc
-        BodyClause (Clause h _) ->
+        Literal (AdornedClause h _) ->
           LEdge (Edge src (predToId h)) DepNormal : acc
 
 

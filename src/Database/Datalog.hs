@@ -11,7 +11,6 @@ module Database.Datalog (
   ) where
 
 import Control.Failure
-import Control.Monad.State.Strict ( runStateT )
 import Data.Text ( Text )
 
 import Database.Datalog.Database
@@ -43,7 +42,7 @@ buildQueryPlan :: (Failure DatalogError m)
                   -> m (QueryPlan a)
 buildQueryPlan idb qm = do
   let ipreds = databasePredicates idb
-  (q, QueryState _ rs) <- runStateT qm (QueryState idb [])
+  (q, rs) <- runQuery qm idb
   rs' <- magicSetsRules ipreds q rs
   strata <- stratifyRules rs'
   return $! QueryPlan strata
