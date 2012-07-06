@@ -13,6 +13,7 @@ module Database.Datalog.Rules (
   relationPredicateFromName,
   rulePredicates,
   issueQuery,
+  applyRule,
   runQuery
   ) where
 
@@ -131,8 +132,13 @@ adornRule :: (Failure DatalogError m, Eq a, Hashable a)
               => Query a -> (Clause a, [Literal Clause a]) -> m (Rule a)
 adornRule q (hd, lits) = do
   (vmap, Literal hd') <- adornLiteral mempty (Literal hd)
-  (_, lits') <- mapAccumM adornLiteral vmap lits
-  return $! Rule hd' lits'
+  (allVars, lits') <- mapAccumM adornLiteral vmap lits
+  let headVars = HS.fromList (clauseTerms hd)
+  -- FIXME: This test isn't actually strict enough.  All head vars
+  -- must appear in a non-negative literal
+  case headVars `HS.difference` allVars == mempty of
+    True -> return $! Rule hd' lits'
+    False -> failure RangeRestrictionViolation
 
 adornQuery :: Clause a -> Query a
 adornQuery (Clause p ts) = Query $ AdornedClause p $ map adorn ts
@@ -178,6 +184,8 @@ runQuery qm idb = do
   rs' <- mapM (adornRule q) rs
   return (q, rs')
 
+applyRule :: (Failure DatalogError m) => Database a -> Rule a -> m (Database a)
+applyRule db r = undefined
 
 mapAccumM :: (Monad m, MonadPlus p) => (acc -> x -> m (acc, y)) -> acc -> [x] -> m (acc, p y)
 mapAccumM _ z [] = return (z, mzero)

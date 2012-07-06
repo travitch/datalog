@@ -10,7 +10,8 @@ module Database.Datalog.Database (
   makeDatabase,
   addRelation,
   assertFact,
-  databasePredicates
+  databasePredicates,
+  databasesDiffer
   ) where
 
 import Control.Failure
@@ -57,14 +58,7 @@ data DBRelation a = DBRelation { relationSchema :: Schema
                                }
                   deriving (Show)
 
-mergeRelations :: DBRelation a -> DBRelation a -> DBRelation a
-mergeRelations = undefined
-
 data Database a = Database (HashMap Text (DBRelation a))
-
-databasePredicates :: Database a -> [Predicate]
-databasePredicates (Database m) =
-  map (RelationPredicate . Relation) (HM.keys m)
 
 instance Monoid (Database a) where
   mempty = Database mempty
@@ -74,6 +68,13 @@ instance Monoid (Database a) where
 newtype Relation = Relation Text
                  deriving (Eq)
 type DatabaseBuilder m a = StateT (Database a) m
+
+databasesDiffer :: Database a -> Database a -> Bool
+databasesDiffer (Database db1) (Database db2) =
+  counts db1 /= counts db2
+  where
+    counts = fmap countData
+    countData (DBRelation _ _ s _) = HS.size s
 
 -- | Make a new fact Database in a DatabaseBuilder monad.  It can
 -- fail, and errors will be returned however the caller indicates.
@@ -144,3 +145,10 @@ databaseRelation (Database m) (Relation t) =
     -- in the same monad with the Database
     Nothing -> error ("Invalid RelationHandle: " ++ show t)
     Just r -> r
+
+mergeRelations :: DBRelation a -> DBRelation a -> DBRelation a
+mergeRelations = undefined
+
+databasePredicates :: Database a -> [Predicate]
+databasePredicates (Database m) =
+  map (RelationPredicate . Relation) (HM.keys m)
