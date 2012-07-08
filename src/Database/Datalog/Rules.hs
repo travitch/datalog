@@ -108,7 +108,68 @@ inferencePredicate :: (Failure DatalogError m)
                       => Text -> QueryMonad m a Predicate
 inferencePredicate = return . InferencePredicate
 
+-- | Bindings are
+data Bindings a = Bindings
 
+instance Monoid (Bindings a) where
+  mempty = Bindings
+  mconcat _ _ = Bindings
+
+-- | A partial tuple records the atoms in a tuple (with their indices
+-- in the tuple).
+data PartialTuple a = PartialTuple [(Int, a)]
+
+bindingAt :: Bindings a -> Int -> a
+bindingAt = undefined
+
+-- | For each term in the clause, take it as a literal if it is bound
+-- or is an atom.  Otherwise, leave it as free (not mentioned in the
+-- partial tuple).
+buildPartialTuple :: AdornedClause a -> Bindings a -> PartialTuple a
+buildPartialTuple c binds =
+  PartialTuple $ foldr (takeBoundOrAtom binds) [] (zip [0..] (adornedClauseTerms c))
+  where
+    takeBoundOrAtom bs (ix, ta) acc =
+      case ta of
+        (Atom a, _) -> (ix, a) : acc
+        (_, Bound) -> (ix, bindingAt ix) : acc
+        _ -> acc
+
+tupleMatches :: PartialTuple a -> Tuple a -> Bool
+tupleMatches = undefined
+
+scanSpace :: ((Tuple a -> Bool) -> [Tuple a] -> b)
+             -> Database a
+             -> Predicate
+             -> PartialTuple a
+             -> b
+scanSpace f db p pt = f (tupleMatches pt) space
+  where
+    -- This is where we use the index, if available.  If not, we have
+    -- to fall back to a table scan
+    space = undefined
+
+select :: Database a -> Predicate -> PartialTuple a -> [Tuple a]
+select = scanSpace filter
+
+anyMatch :: Database a -> Predicate -> PartialTuple a -> Bool
+anyMatch = scanSpace any
+
+
+joinLiteralWith :: Database a
+                   -> AdornedClause a
+                   -> Bindings a
+                   -> (Bindings a -> PartialTuple a -> [Bindings a])
+                   -> Bindings a
+joinLiteralsWith = undefined
+
+joinLiteral :: Database a -> Literal AdornedClause a -> Bindings a -> Bindings a
+joinLiteral db (Literal c) bs = undefined
+joinLiteral db (NegatedLiteral c) bs = undefined
+joinLiteral db (ConditionalClause p vs) bs = undefined
+
+projectLiteral :: Database a -> Literal AdornedClause a -> Bindings a -> Database a
+projectLiteral = undefined
 
 literalClausePredicate :: Literal AdornedClause a -> Maybe Predicate
 literalClausePredicate bc =
