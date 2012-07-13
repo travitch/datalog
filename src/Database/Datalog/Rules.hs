@@ -30,7 +30,6 @@ import Control.Monad.ST.Strict
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
 import Data.Maybe ( mapMaybe )
 import Data.Monoid
@@ -178,14 +177,18 @@ joinLiteralWith c bs f = concatMapM (apply c f) bs
       pt <- buildPartialTuple cl b
       fn b pt
 
+-- Something is still wrong here w.r.t. atoms; they need to be checked
+-- somewhere.  Oh that should probably happen when constructing
+-- partial tuples and work in selects
+
 joinLiteral :: (Eq a, Hashable a)
                => Database a
-               -> Literal AdornedClause a
                -> [Bindings s a]
+               -> Literal AdornedClause a
                -> ST s [Bindings s a]
-joinLiteral db (Literal c) bs = joinLiteralWith c bs (normalJoin db c)
-joinLiteral db (NegatedLiteral c) bs = joinLiteralWith c bs (negatedJoin db c)
-joinLiteral db (ConditionalClause p vs m) bs =
+joinLiteral db bs (Literal c) = joinLiteralWith c bs (normalJoin db c)
+joinLiteral db bs (NegatedLiteral c) = joinLiteralWith c bs (negatedJoin db c)
+joinLiteral db bs (ConditionalClause p vs m) =
   foldM (applyJoinCondition p vs m) [] bs
 
 -- | Extract the values that the predicate requires from the current
@@ -235,7 +238,7 @@ projectTupleOntoLiteral c (Bindings binds) (Tuple t) = do
         Free ix -> V.write b ix val
         _ -> return ()
 
-projectLiteral :: Database a -> Literal AdornedClause a -> [Bindings s a] -> ST s (Database a)
+projectLiteral :: Database a -> AdornedClause a -> [Bindings s a] -> ST s (Database a)
 projectLiteral = undefined
 
 literalClausePredicate :: Literal AdornedClause a -> Maybe Predicate
@@ -307,8 +310,14 @@ runQuery qm idb = do
   rs' <- mapM (adornRule q) rs
   return (q, rs')
 
-applyRule :: (Failure DatalogError m) => Database a -> Rule a -> m (Database a)
-applyRule db r = undefined
+applyRule :: (Failure DatalogError m, Eq a, Hashable a)
+             => Database a -> Rule a -> m (Database a)
+applyRule db r = return $ runST $ do
+  bs <- foldM (joinLiteral db) [] b
+  projectLiteral db h bs
+  where
+    h = ruleHead r
+    b = ruleBody r
 
 {-# INLINE mapAccumM #-}
 -- | Monadic mapAccumL

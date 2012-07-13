@@ -76,7 +76,8 @@ select = undefined
 -- | Apply the rules in each stratum bottom-up.  Stop at a stratum if
 -- nothing changes (since no new facts can be added in later stages if
 -- nothing changed in a lower stage)
-applyStrata :: (Failure DatalogError m) => [[Rule a]] -> Database a -> m (Database a)
+applyStrata :: (Failure DatalogError m, Eq a, Hashable a)
+               => [[Rule a]] -> Database a -> m (Database a)
 applyStrata [] db = return db
 applyStrata (s:strata) db = do
   db' <- foldM applyRule db s
