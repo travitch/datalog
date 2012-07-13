@@ -127,7 +127,7 @@ makeRuleDepGraph rs = mkGraph ns es
       in foldr (toEdge src) acc (ruleBody r)
     toEdge src bc acc =
       case bc of
-        ConditionalClause _ _ -> acc
+        ConditionalClause _ _ _ -> acc
         NegatedLiteral (AdornedClause h _) ->
           LEdge (Edge src (predToId h)) DepNegated : acc
         Literal (AdornedClause h _) ->

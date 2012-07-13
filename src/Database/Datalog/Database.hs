@@ -5,7 +5,7 @@ module Database.Datalog.Database (
   Database,
   DatabaseBuilder,
   Predicate(..),
-  Tuple,
+  Tuple(..),
   -- * Functions
   makeDatabase,
   addRelation,
