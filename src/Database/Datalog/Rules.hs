@@ -27,9 +27,11 @@ import Control.Applicative
 import Control.Failure
 import Control.Monad.State.Strict
 import Control.Monad.ST.Strict
+import qualified Data.Foldable as F
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
+import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
 import Data.Maybe ( mapMaybe )
 import Data.Monoid
@@ -149,22 +151,22 @@ buildPartialTuple c binds =
 tupleMatches :: PartialTuple a -> Tuple a -> Bool
 tupleMatches = undefined
 
-scanSpace :: ((Tuple a -> Bool) -> [Tuple a] -> b)
+scanSpace :: ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
              -> Database a
              -> Predicate
              -> PartialTuple a
              -> b
 scanSpace f db p pt = f (tupleMatches pt) space
   where
-    -- This is where we use the index, if available.  If not, we have
-    -- to fall back to a table scan
-    space = undefined
+    -- FIXME: This is where we use the index, if available.  If not,
+    -- we have to fall back to a table scan
+    Just space = dataForPredicate db p
 
 select :: Database a -> Predicate -> PartialTuple a -> [Tuple a]
-select = scanSpace filter
+select db p = HS.toList . scanSpace HS.filter db p
 
 anyMatch :: Database a -> Predicate -> PartialTuple a -> Bool
-anyMatch = scanSpace any
+anyMatch = scanSpace F.any
 
 {-# INLINE joinLiteralWith #-}
 joinLiteralWith :: AdornedClause a

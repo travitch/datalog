@@ -11,7 +11,8 @@ module Database.Datalog.Database (
   addRelation,
   assertFact,
   databasePredicates,
-  databasesDiffer
+  databasesDiffer,
+  dataForPredicate
   ) where
 
 import Control.Failure
@@ -68,6 +69,17 @@ instance Monoid (Database a) where
 newtype Relation = Relation Text
                  deriving (Eq)
 type DatabaseBuilder m a = StateT (Database a) m
+
+dataForPredicate :: (Failure DatalogError m)
+                        => Database a -> Predicate -> m (HashSet (Tuple a))
+dataForPredicate (Database m) p =
+  case HM.lookup txt m of
+    Nothing -> failure $ NoRelationError txt
+    Just r -> return $ relationData r
+  where
+    txt = case p of
+      RelationPredicate (Relation t) -> t
+      InferencePredicate t -> t
 
 databasesDiffer :: Database a -> Database a -> Bool
 databasesDiffer (Database db1) (Database db2) =
