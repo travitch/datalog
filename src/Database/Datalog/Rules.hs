@@ -148,10 +148,17 @@ buildPartialTuple c binds =
           return $ (ix, b) : acc
         _ -> return acc
 
-tupleMatches :: PartialTuple a -> Tuple a -> Bool
-tupleMatches = undefined
+tupleMatches :: (Eq a) => PartialTuple a -> Tuple a -> Bool
+tupleMatches (PartialTuple pvs) (Tuple vs) =
+  all lookMatch (zip [0..] vs)
+  where
+    lookMatch (ix, v) =
+      case lookup ix pvs of
+        Nothing -> False
+        Just v' -> v == v'
 
-scanSpace :: ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
+scanSpace :: (Eq a)
+             => ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
              -> Database a
              -> Predicate
              -> PartialTuple a
@@ -162,10 +169,10 @@ scanSpace f db p pt = f (tupleMatches pt) space
     -- we have to fall back to a table scan
     Just space = dataForPredicate db p
 
-select :: Database a -> Predicate -> PartialTuple a -> [Tuple a]
+select :: (Eq a) => Database a -> Predicate -> PartialTuple a -> [Tuple a]
 select db p = HS.toList . scanSpace HS.filter db p
 
-anyMatch :: Database a -> Predicate -> PartialTuple a -> Bool
+anyMatch :: (Eq a) => Database a -> Predicate -> PartialTuple a -> Bool
 anyMatch = scanSpace F.any
 
 {-# INLINE joinLiteralWith #-}
@@ -213,12 +220,14 @@ applyJoinCondition p vs m acc b@(Bindings binds) = do
       let Just ix = HM.lookup t m
       in V.read binds ix
 
-normalJoin :: Database a -> AdornedClause a -> Bindings s a -> PartialTuple a -> ST s [Bindings s a]
+normalJoin :: (Eq a) => Database a -> AdornedClause a -> Bindings s a
+              -> PartialTuple a -> ST s [Bindings s a]
 normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) ts
   where
     ts = select db (adornedClausePredicate c) pt
 
-negatedJoin :: Database a -> AdornedClause a -> Bindings s a -> PartialTuple a -> ST s [Bindings s a]
+negatedJoin :: (Eq a) => Database a -> AdornedClause a -> Bindings s a
+               -> PartialTuple a -> ST s [Bindings s a]
 negatedJoin db c binds pt =
   case anyMatch db (adornedClausePredicate c) pt of
     False -> return []
