@@ -2,7 +2,25 @@
 module Database.Datalog (
   -- * Types
   Database,
+  Relation,
+  DatabaseBuilder,
+  QueryBuilder,
+  Predicate,
+  Clause(..),
+  Literal(..),
   QueryPlan,
+
+  -- * Building the IDB
+  makeDatabase,
+  addRelation,
+  assertFact,
+
+  -- * Building Logic Programs
+  (|-),
+  assertRule,
+  relationPredicateFromName,
+  inferencePredicate,
+  issueQuery,
 
   -- * Evaluating Queries
   queryDatabase,
@@ -21,7 +39,11 @@ import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
 
--- | A fully-stratified query plan
+-- FIXME: Unify predicate and relation for simplicity, also remove the
+-- distinction between IDB and EDB predicates
+
+
+-- | A fully-stratified query plan that is ready to be executed.
 data QueryPlan a = QueryPlan (Query a) [[Rule a]]
 
 -- | This is a shortcut to build a query plan and execute in one step,
@@ -29,8 +51,8 @@ data QueryPlan a = QueryPlan (Query a) [[Rule a]]
 -- in one-shot queries.
 queryDatabase :: (Failure DatalogError m, Eq a, Hashable a)
                  => Database a -- ^ The intensional database of facts
-                 -> QueryMonad m a (Query a) -- ^ A monad building up a set of rules and returning a Query
-                 -> m [Tuple a]
+                 -> QueryBuilder m a (Query a) -- ^ A monad building up a set of rules and returning a Query
+                 -> m [[a]]
 queryDatabase idb qm = do
   qp <- buildQueryPlan idb qm
   executeQueryPlan qp idb []
@@ -40,7 +62,7 @@ queryDatabase idb qm = do
 -- error if the rules cannot be stratified.
 buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a)
                   => Database a
-                  -> QueryMonad m a (Query a)
+                  -> QueryBuilder m a (Query a)
                   -> m (QueryPlan a)
 buildQueryPlan idb qm = do
   let ipreds = databasePredicates idb
@@ -49,16 +71,22 @@ buildQueryPlan idb qm = do
   strata <- stratifyRules rs'
   return $! QueryPlan q strata
 
-
 -- | Execute a query plan with an intensional database and a set of
 -- bindings (substituted in for 'BindVar's).  Throw an error if:
 --
 --  * The rules and database define the same relation
 executeQueryPlan :: (Failure DatalogError m, Eq a, Hashable a)
-                    => QueryPlan a -> Database a -> [(Text, a)] -> m [Tuple a]
+                    => QueryPlan a -> Database a -> [(Text, a)] -> m [[a]]
 executeQueryPlan (QueryPlan q strata) idb bindings = do
-  idb' <- executePlan' strata idb
-  select q idb'
+  -- FIXME: Bindings is used to substitute in values for BoundVars in
+  -- the query.  Those might actually affect the magic rules that are
+  -- required...
+  edb <- executePlan' strata idb
+  let pt = queryToPartialTuple q
+      p = queryPredicate q
+  return $! map unTuple $ select edb p pt
+
+-- Private helpers
 
 -- | Execute the query plan until no new facts are added to the database
 executePlan' :: (Failure DatalogError m, Eq a, Hashable a)
@@ -68,10 +96,6 @@ executePlan' strata db = do
   case databasesDiffer db db' of
     True -> executePlan' strata db'
     False -> return db'
-
--- | Select the facts relevant to the query from the database
-select :: (Failure DatalogError m) => Query a -> Database a -> m [Tuple a]
-select = undefined
 
 -- | Apply the rules in each stratum bottom-up.  Stop at a stratum if
 -- nothing changes (since no new facts can be added in later stages if

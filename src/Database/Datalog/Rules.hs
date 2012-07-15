@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, BangPatterns #-}
 -- | FIXME: Change the adornment/query building process such that
 -- conditional clauses are always processed last.  This is necessary
 -- so that all variables are bound.
@@ -13,14 +13,19 @@ module Database.Datalog.Rules (
   Rule(..),
   Literal(..),
   Query,
-  QueryMonad,
+  QueryBuilder,
+  PartialTuple,
   (|-),
   assertRule,
   relationPredicateFromName,
+  inferencePredicate,
   rulePredicates,
   issueQuery,
   applyRule,
-  runQuery
+  runQuery,
+  select,
+  queryToPartialTuple,
+  queryPredicate
   ) where
 
 import Control.Applicative
@@ -47,7 +52,7 @@ data QueryState a = QueryState { intensionalDatabase :: Database a
                                }
 
 -- | The Monad in which queries are constructed and rules are declared
-type QueryMonad m a = StateT (QueryState a) m
+type QueryBuilder m a = StateT (QueryState a) m
 
 
 data Term a = LogicVar !Text
@@ -93,6 +98,7 @@ data Literal ctype a = Literal (ctype a)
 -- clauses, negated clauses, or conditionals.
 data Rule a = Rule { ruleHead :: AdornedClause a
                    , ruleBody :: [Literal AdornedClause a]
+                   , ruleVariableMap :: HashMap (Term a) Int
                    }
 
 newtype Query a = Query { unQuery :: Clause a }
@@ -100,10 +106,11 @@ newtype Query a = Query { unQuery :: Clause a }
 infixr 0 |-
 
 -- | Assert a rule
-(|-) :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> QueryMonad m a ()
+(|-) :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> QueryBuilder m a ()
 (|-) = assertRule
 
-assertRule :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> QueryMonad m a ()
+-- | Assert a rule
+assertRule :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> QueryBuilder m a ()
 assertRule h b = do
   s <- get
   put s { queryRules = (h, b) : queryRules s }
@@ -111,26 +118,42 @@ assertRule h b = do
 -- | Retrieve a Relation handle from the IDB.  If the Relation does
 -- not exist, an error will be raised.
 relationPredicateFromName :: (Failure DatalogError m)
-                             => Text -> QueryMonad m a Predicate
+                             => Text -> QueryBuilder m a Predicate
 relationPredicateFromName name = do
   idb <- gets intensionalDatabase
   case RelationPredicate (Relation name) `elem` databasePredicates idb of
     False -> lift $ failure (NoRelationError name)
     True -> return $! (RelationPredicate (Relation name))
 
+-- | Create a new predicate that will be referenced by an EDB rule
 inferencePredicate :: (Failure DatalogError m)
-                      => Text -> QueryMonad m a Predicate
+                      => Text -> QueryBuilder m a Predicate
 inferencePredicate = return . InferencePredicate
 
--- | Bindings are
-data Bindings s a = Bindings (STVector s a)
+-- | Bindings are vectors of values.  Each variable in a rule is
+-- assigned an index in the Bindings during the adornment process.
+-- When evaluating a rule, if a free variable is encountered, all of
+-- its possible values are entered at the index for that variable in a
+-- Bindings vector.  When a bound variable is encountered, its current
+-- value is looked up from the Bindings.  If that value does not match
+-- the concrete tuple being examined, that tuple is rejected.
+newtype Bindings s a = Bindings (STVector s a)
 
 -- | A partial tuple records the atoms in a tuple (with their indices
--- in the tuple).
+-- in the tuple).  These are primarily used in database queries.
 data PartialTuple a = PartialTuple [(Int, a)]
 
-bindingAt :: Bindings s a -> Int -> ST s a
-bindingAt (Bindings v) = V.read v
+-- | Convert a 'Query' into a 'PartialTuple' that can be used in a
+-- 'select' of the IDB
+queryToPartialTuple :: Query a -> PartialTuple a
+queryToPartialTuple (Query c) =
+  PartialTuple $! foldr takeAtom [] (zip [0..] ts)
+  where
+    ts = clauseTerms c
+    takeAtom (ix, t) acc =
+      case t of
+        Atom a -> (ix, a) : acc
+        _ -> acc
 
 -- | For each term in the clause, take it as a literal if it is bound
 -- or is an atom.  Otherwise, leave it as free (not mentioned in the
@@ -140,14 +163,16 @@ buildPartialTuple c binds =
   PartialTuple . reverse <$> foldM (takeBoundOrAtom binds) [] indexedClauses
   where
     indexedClauses = zip [0..] (adornedClauseTerms c)
-    takeBoundOrAtom bs acc (ix, ta) =
+    takeBoundOrAtom (Bindings bs) acc (ix, ta) =
       case ta of
         (Atom a, BoundAtom) -> return $ (ix, a) : acc
         (_, Bound slot) -> do
-          b <- bindingAt bs slot
+          b <- V.read bs slot
           return $ (ix, b) : acc
         _ -> return acc
 
+-- | Determine if a PartialTuple and a concrete Tuple from the
+-- database match.
 tupleMatches :: (Eq a) => PartialTuple a -> Tuple a -> Bool
 tupleMatches (PartialTuple pvs) (Tuple vs) =
   all lookMatch (zip [0..] vs)
@@ -157,6 +182,8 @@ tupleMatches (PartialTuple pvs) (Tuple vs) =
         Nothing -> False
         Just v' -> v == v'
 
+{-# INLINE scanSpace #-}
+-- | The common worker for 'select' and 'matchAny'
 scanSpace :: (Eq a)
              => ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
              -> Database a
@@ -169,13 +196,18 @@ scanSpace f db p pt = f (tupleMatches pt) space
     -- we have to fall back to a table scan
     Just space = dataForPredicate db p
 
+-- | Return all of the tuples in the given relation that match the
+-- given PartialTuple
 select :: (Eq a) => Database a -> Predicate -> PartialTuple a -> [Tuple a]
 select db p = HS.toList . scanSpace HS.filter db p
 
+-- | Return true if any tuples in the given relation match the given
+-- 'PartialTuple'
 anyMatch :: (Eq a) => Database a -> Predicate -> PartialTuple a -> Bool
 anyMatch = scanSpace F.any
 
 {-# INLINE joinLiteralWith #-}
+-- | The common worker for the non-conditional clause join functions.
 joinLiteralWith :: AdornedClause a
                    -> [Bindings s a]
                    -> (Bindings s a -> PartialTuple a -> ST s [Bindings s a])
@@ -186,10 +218,10 @@ joinLiteralWith c bs f = concatMapM (apply c f) bs
       pt <- buildPartialTuple cl b
       fn b pt
 
--- Something is still wrong here w.r.t. atoms; they need to be checked
--- somewhere.  Oh that should probably happen when constructing
--- partial tuples and work in selects
-
+-- | Join a literal with the current set of bindings.  This can
+-- increase the number of bindings (for a non-negated clause) or
+-- decrease the number of bindings (for a negated or conditional
+-- clause).
 joinLiteral :: (Eq a, Hashable a)
                => Database a
                -> [Bindings s a]
@@ -197,7 +229,7 @@ joinLiteral :: (Eq a, Hashable a)
                -> ST s [Bindings s a]
 joinLiteral db bs (Literal c) = joinLiteralWith c bs (normalJoin db c)
 joinLiteral db bs (NegatedLiteral c) = joinLiteralWith c bs (negatedJoin db c)
-joinLiteral db bs (ConditionalClause p vs m) =
+joinLiteral _ bs (ConditionalClause p vs m) =
   foldM (applyJoinCondition p vs m) [] bs
 
 -- | Extract the values that the predicate requires from the current
@@ -220,18 +252,26 @@ applyJoinCondition p vs m acc b@(Bindings binds) = do
       let Just ix = HM.lookup t m
       in V.read binds ix
 
+-- | Non-negated join; it works by selecting all of the tuples
+-- matching the input PartialTuple and then recording all of the newly
+-- bound variable values (i.e., the free variables in the rule).  This
+-- produces one set of bindings for each possible value of the free
+-- variables in the rule (or could be empty if there are no matching
+-- tuples).
 normalJoin :: (Eq a) => Database a -> AdornedClause a -> Bindings s a
               -> PartialTuple a -> ST s [Bindings s a]
 normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) ts
   where
     ts = select db (adornedClausePredicate c) pt
 
+-- | Retain the input binding if there are no matches in the database
+-- for the input PartialTuple.  Otherwise reject it.
 negatedJoin :: (Eq a) => Database a -> AdornedClause a -> Bindings s a
                -> PartialTuple a -> ST s [Bindings s a]
 negatedJoin db c binds pt =
   case anyMatch db (adornedClausePredicate c) pt of
-    False -> return []
-    True -> return [binds]
+    True -> return []
+    False -> return [binds]
 
 -- | For each free variable in the tuple (according to the adorned
 -- clause), enter its value into the input bindings
@@ -249,8 +289,44 @@ projectTupleOntoLiteral c (Bindings binds) (Tuple t) = do
         Free ix -> V.write b ix val
         _ -> return ()
 
-projectLiteral :: Database a -> AdornedClause a -> [Bindings s a] -> ST s (Database a)
-projectLiteral = undefined
+-- | Convert a set of variable bindings to a tuple that matches the
+-- input clause (which should have all variables).  This is basically
+-- unifying variables with the head of the rule.
+bindingsToTuple :: (Eq a, Hashable a)
+                   => AdornedClause a
+                   -> HashMap (Term a) Int
+                   -> Bindings s a
+                   -> ST s (Tuple a)
+bindingsToTuple c vmap (Bindings bs) = do
+  vals <- mapM variableTermToValue (adornedClauseTerms c)
+  return $ Tuple vals
+  where
+    variableTermToValue (t, _) =
+      case HM.lookup t vmap of
+        Nothing -> error "NonVariableInRuleHead"
+        Just ix -> V.read bs ix
+
+-- | Ensure that the relation named by the clause argument is in the
+-- database.  Get the DBRelation.  Then fold over the Bindings,
+-- constructing a tuple for each one (that is inserted into the
+-- relation).  Then build a new database with that relation replaced
+-- with the new one.
+projectLiteral :: (Eq a, Hashable a)
+                  => Database a
+                  -> AdornedClause a
+                  -> HashMap (Term a) Int
+                  -> [Bindings s a]
+                  -> ST s (Database a)
+projectLiteral db c vmap bs = do
+  let p = adornedClausePredicate c
+      r = predicateToRelation p
+      rel = ensureDatabaseRelation db r (length (adornedClauseTerms c))
+  rel' <- foldM project rel bs
+  return $ replaceRelation db rel'
+  where
+    project !r b = do
+      t <- bindingsToTuple c vmap b
+      return $ addTupleToRelation r t
 
 literalClausePredicate :: Literal AdornedClause a -> Maybe Predicate
 literalClausePredicate bc =
@@ -260,9 +336,11 @@ literalClausePredicate bc =
     _ -> Nothing
 
 rulePredicates :: Rule a -> [Predicate]
-rulePredicates (Rule h bcs) = adornedClausePredicate h : mapMaybe literalClausePredicate bcs
+rulePredicates (Rule h bcs _) = adornedClausePredicate h : mapMaybe literalClausePredicate bcs
 
-issueQuery :: (Failure DatalogError m) => Clause a -> m (Query a)
+-- | Turn a Clause into a Query.  This is meant to be the last
+-- statement in a QueryBuilder monad.
+issueQuery :: (Failure DatalogError m) => Clause a -> QueryBuilder m a (Query a)
 issueQuery = return . Query
 
 -- If the query has a bound literal, that influences the rules it
@@ -279,7 +357,7 @@ adornRule q (hd, lits) = do
   -- FIXME: This test isn't actually strict enough.  All head vars
   -- must appear in a non-negative literal
   case headVars `HS.difference` (HS.fromList (HM.keys allVars)) == mempty of
-    True -> return $! Rule hd' lits'
+    True -> return $! Rule hd' lits' allVars
     False -> failure RangeRestrictionViolation
 
 adornLiteral :: (Failure DatalogError m, Eq a, Hashable a)
@@ -309,26 +387,34 @@ adornLiteral boundVars lit =
               let ix = HM.size bvs
               in return (HM.insert t ix bvs, (t, Free ix))
 
--- | Run the QueryMonad action to build a query and initial rule
+-- | Run the QueryBuilder action to build a query and initial rule
 -- database
 --
 -- Rules are adorned (marking each variable as Free or Bound as they
 -- appear) before being returned.
 runQuery :: (Failure DatalogError m, Eq a, Hashable a)
-            => QueryMonad m a (Query a) -> Database a -> m (Query a, [Rule a])
+            => QueryBuilder m a (Query a) -> Database a -> m (Query a, [Rule a])
 runQuery qm idb = do
   (q, QueryState _ rs) <- runStateT qm (QueryState idb [])
   rs' <- mapM (adornRule q) rs
   return (q, rs')
 
+-- | A worker to apply a single rule to the database (producing a new
+-- database).
 applyRule :: (Failure DatalogError m, Eq a, Hashable a)
              => Database a -> Rule a -> m (Database a)
 applyRule db r = return $ runST $ do
   bs <- foldM (joinLiteral db) [] b
-  projectLiteral db h bs
+  projectLiteral db h m bs
   where
     h = ruleHead r
     b = ruleBody r
+    m = ruleVariableMap r
+
+queryPredicate :: Query a -> Predicate
+queryPredicate = clausePredicate . unQuery
+
+-- Helpers missing from the standard libraries
 
 {-# INLINE mapAccumM #-}
 -- | Monadic mapAccumL

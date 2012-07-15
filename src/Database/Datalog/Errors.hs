@@ -12,6 +12,7 @@ data DatalogError = SchemaError Text
                   | ExtraQueryError
                   | StratificationError
                   | RangeRestrictionViolation
+                  | NonVariableInRuleHead
                   deriving (Typeable, Show)
 
 instance Exception DatalogError
