@@ -93,6 +93,11 @@ data AdornedClause a = AdornedClause { adornedClausePredicate :: Predicate
 data Literal ctype a = Literal (ctype a)
                      | NegatedLiteral (ctype a)
                      | ConditionalClause ([a] -> Bool) [Term a] (HashMap (Term a) Int)
+                     -- | Condition1 (a -> Bool) (Term a) (HashMap (Term a) Int)
+                     -- | Condition2 (a -> a -> Bool) (Term a, Term a) (HashMap (Term a) Int)
+                     -- | Condition3 (a -> a -> a -> Bool) (Term a, Term a, Term a) (HashMap (Term a) Int)
+                     -- | Condition4 (a -> a -> a -> a -> Bool) (Term a, Term a, Term a, Term a) (HashMap (Term a) Int)
+                     -- | Condition5 (a -> a -> a -> a -> a -> Bool) ((Term a, Term a, Term a, Term a, Term a) (HashMap (Term a) Int)
 
 -- | A rule has a head and body clauses.  Body clauses can be normal
 -- clauses, negated clauses, or conditionals.

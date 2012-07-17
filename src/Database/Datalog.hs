@@ -8,6 +8,7 @@ module Database.Datalog (
   Predicate,
   Clause(..),
   Literal(..),
+  Term(..),
   QueryPlan,
 
   -- * Building the IDB
