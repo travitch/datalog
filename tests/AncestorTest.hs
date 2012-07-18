@@ -19,8 +19,6 @@ tests = [ testGroup "t1" [ testCase "1" t1
                          , testCase "4" t4
                          ] ]
 
-lit p ts = Literal $ Clause p ts
-
 db1 :: Maybe (Database Text)
 db1 = makeDatabase $ do
       parentOf <- addRelation "parentOf" 2
@@ -49,9 +47,9 @@ t1 = do
       let x = LogicVar "x"
           y = LogicVar "y"
           z = LogicVar "z"
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, y] ]
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
-      issueQuery $ Clause ancestorOf [x, Atom "John" ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, y] ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
+      issueQuery ancestorOf [x, Atom "John" ]
 
 t2 :: Assertion
 t2 = do
@@ -68,9 +66,9 @@ t2 = do
       let x = LogicVar "x"
           y = LogicVar "y"
           z = LogicVar "z"
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, y] ]
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
-      issueQuery $ Clause ancestorOf [x, Atom "Mary" ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, y] ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
+      issueQuery ancestorOf [x, Atom "Mary" ]
 
 t3 :: Assertion
 t3 = do
@@ -87,9 +85,9 @@ t3 = do
       let x = LogicVar "x"
           y = LogicVar "y"
           z = LogicVar "z"
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, y] ]
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
-      issueQuery $ Clause ancestorOf [Atom "Sue", x ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, y] ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
+      issueQuery ancestorOf [Atom "Sue", x ]
 
 t4 :: Assertion
 t4 = do
@@ -104,6 +102,6 @@ t4 = do
       let x = LogicVar "x"
           y = LogicVar "y"
           z = LogicVar "z"
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, y] ]
-      Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
-      issueQuery $ Clause ancestorOf [x, Atom "Bob"]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, y] ]
+      (ancestorOf, [x, y]) |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
+      issueQuery ancestorOf [x, Atom "Bob"]

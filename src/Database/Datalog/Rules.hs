@@ -25,7 +25,14 @@ module Database.Datalog.Rules (
   runQuery,
   select,
   queryToPartialTuple,
-  queryPredicate
+  queryPredicate,
+  lit,
+  negLit,
+  cond1,
+  cond2,
+  cond3,
+  cond4,
+  cond5
   ) where
 
 import Control.Applicative
@@ -115,11 +122,43 @@ instance (Show a) => Show (AdornedClause a) where
 data Literal ctype a = Literal (ctype a)
                      | NegatedLiteral (ctype a)
                      | ConditionalClause ([a] -> Bool) [Term a] (HashMap (Term a) Int)
-                     -- | Condition1 (a -> Bool) (Term a) (HashMap (Term a) Int)
-                     -- | Condition2 (a -> a -> Bool) (Term a, Term a) (HashMap (Term a) Int)
-                     -- | Condition3 (a -> a -> a -> Bool) (Term a, Term a, Term a) (HashMap (Term a) Int)
-                     -- | Condition4 (a -> a -> a -> a -> Bool) (Term a, Term a, Term a, Term a) (HashMap (Term a) Int)
-                     -- | Condition5 (a -> a -> a -> a -> a -> Bool) ((Term a, Term a, Term a, Term a, Term a) (HashMap (Term a) Int)
+
+lit :: Predicate -> [Term a] -> Literal Clause a
+lit p ts = Literal $ Clause p ts
+
+negLit :: Predicate -> [Term a] -> Literal Clause a
+negLit p ts = NegatedLiteral $ Clause p ts
+
+cond1 :: (Eq a, Hashable a)
+         => (a -> Bool)
+         -> Term a
+         -> Literal Clause a
+cond1 p t = ConditionalClause (\[x] -> p x) [t] mempty
+
+cond2 :: (Eq a, Hashable a)
+         => (a -> a -> Bool)
+         -> (Term a, Term a)
+         -> Literal Clause a
+cond2 p (t1, t2) = ConditionalClause (\[x1, x2] -> p x1 x2) [t1, t2] mempty
+
+
+cond3 :: (Eq a, Hashable a)
+         => (a -> a -> a -> Bool)
+         -> (Term a, Term a, Term a)
+         -> Literal Clause a
+cond3 p (t1, t2, t3) = ConditionalClause (\[x1, x2, x3] -> p x1 x2 x3) [t1, t2, t3] mempty
+
+cond4 :: (Eq a, Hashable a)
+         => (a -> a -> a -> a -> Bool)
+         -> (Term a, Term a, Term a, Term a)
+         -> Literal Clause a
+cond4 p (t1, t2, t3, t4) = ConditionalClause (\[x1, x2, x3, x4] -> p x1 x2 x3 x4) [t1, t2, t3, t4] mempty
+
+cond5 :: (Eq a, Hashable a)
+         => (a -> a -> a -> a -> a -> Bool)
+         -> (Term a, Term a, Term a, Term a, Term a)
+         -> Literal Clause a
+cond5 p (t1, t2, t3, t4, t5) = ConditionalClause (\[x1, x2, x3, x4, x5] -> p x1 x2 x3 x4 x5) [t1, t2, t3, t4, t5] mempty
 
 instance (Show a, Show (ctype a)) => Show (Literal ctype a) where
   show (Literal c) = show c
@@ -141,12 +180,13 @@ newtype Query a = Query { unQuery :: Clause a }
 infixr 0 |-
 
 -- | Assert a rule
-(|-) :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> QueryBuilder m a ()
+(|-) :: (Failure DatalogError m) => (Predicate, [Term a]) -> [Literal Clause a] -> QueryBuilder m a ()
 (|-) = assertRule
 
 -- | Assert a rule
-assertRule :: (Failure DatalogError m) => Clause a -> [Literal Clause a] -> QueryBuilder m a ()
-assertRule h b = do
+assertRule :: (Failure DatalogError m) => (Predicate, [Term a]) -> [Literal Clause a] -> QueryBuilder m a ()
+assertRule (p, ts) b = do
+  let h = Clause p ts
   s <- get
   put s { queryRules = (h, b) : queryRules s }
 
@@ -385,8 +425,8 @@ rulePredicates (Rule h bcs _) = adornedClausePredicate h : mapMaybe literalClaus
 
 -- | Turn a Clause into a Query.  This is meant to be the last
 -- statement in a QueryBuilder monad.
-issueQuery :: (Failure DatalogError m) => Clause a -> QueryBuilder m a (Query a)
-issueQuery = return . Query
+issueQuery :: (Failure DatalogError m) => Predicate -> [Term a] -> QueryBuilder m a (Query a)
+issueQuery p ts = return $ Query $ Clause p ts
 
 -- If the query has a bound literal, that influences the rules it
 -- corresponds to.  Other rules are not affected.  Those positions
@@ -409,8 +449,8 @@ adornLiteral :: (Failure DatalogError m, Eq a, Hashable a)
                 => HashMap (Term a) Int
                 -> Literal Clause a
                 -> m (HashMap (Term a) Int, Literal AdornedClause a)
-adornLiteral boundVars lit =
-  case lit of
+adornLiteral boundVars l =
+  case l of
     Literal c -> adornClause Literal c
     NegatedLiteral c -> adornClause NegatedLiteral c
     ConditionalClause f ts _ -> return (boundVars, ConditionalClause f ts boundVars)

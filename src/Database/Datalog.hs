@@ -6,8 +6,6 @@ module Database.Datalog (
   DatabaseBuilder,
   QueryBuilder,
   Predicate,
-  Clause(..),
-  Literal(..),
   Term(..),
   QueryPlan,
 
@@ -22,6 +20,13 @@ module Database.Datalog (
   relationPredicateFromName,
   inferencePredicate,
   issueQuery,
+  lit,
+  negLit,
+  cond1,
+  cond2,
+  cond3,
+  cond4,
+  cond5,
 
   -- * Evaluating Queries
   queryDatabase,
@@ -39,9 +44,6 @@ import Database.Datalog.Errors
 import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
-
-import Debug.Trace
-debug = flip trace
 
 -- FIXME: Unify predicate and relation for simplicity, also remove the
 -- distinction between IDB and EDB predicates
@@ -108,7 +110,7 @@ applyStrata :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                => [[Rule a]] -> Database a -> m (Database a)
 applyStrata [] db = return db
 applyStrata (s:strata) db = do
-  db' <- foldM applyRule db s `debug` ("Applying rule " ++ show s)
+  db' <- foldM applyRule db s
   case databasesDiffer db db' of
-    True -> applyStrata strata db' `debug` "Databases differ, re-running rules"
+    True -> applyStrata strata db'
     False -> return db
