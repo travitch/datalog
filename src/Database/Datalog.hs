@@ -81,10 +81,12 @@ executeQueryPlan :: (Failure DatalogError m, Eq a, Hashable a, Show a)
 executeQueryPlan (QueryPlan q strata) idb bindings = do
   -- FIXME: Bindings is used to substitute in values for BoundVars in
   -- the query.  Those might actually affect the magic rules that are
-  -- required...
+  -- required...  This is the seed-rule and
+  -- seed-predicate-for-insertion code in the clojure implementation
   edb <- executePlan' strata idb
-  let pt = queryToPartialTuple q
-      p = queryPredicate q
+  let q' = bindQuery q bindings
+      pt = queryToPartialTuple q'
+      p = queryPredicate q'
   return $! map unTuple $ select edb p pt
 
 -- Private helpers

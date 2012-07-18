@@ -32,7 +32,8 @@ module Database.Datalog.Rules (
   cond2,
   cond3,
   cond4,
-  cond5
+  cond5,
+  bindQuery
   ) where
 
 import Control.Applicative
@@ -521,6 +522,22 @@ applyRule db r = return $ runST $ do
 
 queryPredicate :: Query a -> Relation
 queryPredicate = clauseRelation . unQuery
+
+-- | Apply bindings to a query
+bindQuery :: Query a -> [(Text, a)] -> Query a
+bindQuery (Query (Clause r ts)) bs =
+  Query $ Clause r $ foldr applyBinding [] ts
+  where
+    applyBinding t acc =
+      case t of
+        LogicVar _ -> t : acc
+        BindVar name ->
+          case lookup name bs of
+            Nothing -> error ("No binding provided for BindVar " ++ show name)
+            Just b -> Atom b : acc
+        Anything -> t : acc
+        Atom _ -> t : acc
+        FreshVar _ -> error "Users cannot provide FreshVars"
 
 -- Helpers missing from the standard libraries
 

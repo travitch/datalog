@@ -15,7 +15,7 @@ main = defaultMain tests
 
 tests :: [Test]
 tests = [ testGroup "t1" [ testCase "1" t1
-                         -- , testCase "2" t2
+                         , testCase "2" t2
                          -- , testCase "3" t3
                          -- , testCase "4" t4
                          ] ]
@@ -23,7 +23,7 @@ tests = [ testGroup "t1" [ testCase "1" t1
 data WorkInfo = EID !Int -- id
               | EN !Text -- Name
               | EP !Text -- Position
-              | J !Text -- Job
+              | J !Text  -- Job
               deriving (Eq, Ord, Show)
 
 instance Hashable WorkInfo where
@@ -83,33 +83,50 @@ db1 = makeDatabase $ do
   jobExceptions <- addRelation "jobExceptions" 2
   assertFact jobExceptions [ EID 4, J "PC Support" ]
 
+q1 = do
+  employee <- relationPredicateFromName "employee"
+  bossOf <- relationPredicateFromName "bossOf"
+  worksFor <- inferencePredicate "worksFor"
+  let x = LogicVar "X"
+      y = LogicVar "Y"
+      z = LogicVar "Z"
+      eid = LogicVar "E-ID"
+      bid = LogicVar "B-ID"
+  (worksFor, [x, y]) |- [ lit bossOf [bid, eid]
+                        , lit employee [eid, x, Anything]
+                        , lit employee [bid, y, Anything]
+                        ]
+  (worksFor, [x, y]) |- [ lit worksFor [x, z]
+                        , lit worksFor [z, y]
+                        ]
+  issueQuery worksFor [ BindVar "name", x ]
+
 t1 :: Assertion
 t1 = do
   let Just db = db1
-  res <- queryDatabase db q
+      Just qp = buildQueryPlan db q1
+
+  res <- executeQueryPlan qp db [("name", EN "Albert")]
   assertEqual "t1" expected (fromList res)
   where
     expected = fromList [ [EN "Albert", EN "Li"]
                         , [EN "Albert", EN "Sameer"]
                         , [EN "Albert", EN "Bob"]
                         ]
-    q = do
-      employee <- relationPredicateFromName "employee"
-      bossOf <- relationPredicateFromName "bossOf"
-      worksFor <- inferencePredicate "worksFor"
-      let x = LogicVar "X"
-          y = LogicVar "Y"
-          z = LogicVar "Z"
-          eid = LogicVar "E-ID"
-          bid = LogicVar "B-ID"
-      (worksFor, [x, y]) |- [ lit bossOf [bid, eid]
-                            , lit employee [eid, x, Anything]
-                            , lit employee [bid, y, Anything]
-                            ]
-      (worksFor, [x, y]) |- [ lit worksFor [x, z]
-                            , lit worksFor [z, y]
-                            ]
-      issueQuery worksFor [ Atom (EN "Albert"), x ]
+t2 :: Assertion
+t2 = do
+  let Just db = db1
+      Just qp = buildQueryPlan db q1
+
+  res <- executeQueryPlan qp db [("name", EN "Lilian")]
+  assertEqual "t1" expected (fromList res)
+  where
+    expected = fromList [ [EN "Lilian", EN "Sameer"]
+                        , [EN "Lilian", EN "Bob"]
+                        ]
+
+
+
 
 {-
 t1 :: Assertion
