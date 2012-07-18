@@ -47,7 +47,7 @@ stratifyRules rs =
           allOutEdges = concatMap (lsuc g) nids
           negatedEdges = filter ((==DepNegated) . snd) allOutEdges
           internalNegatedEdges = filter ((`elem` nids) . fst) negatedEdges
-      in null internalNegatedEdges
+      in not (null internalNegatedEdges)
 
 -- | Given the stratum number for each Predicate, place rules headed
 -- with that Predicate in their respective strata.  This is

@@ -38,14 +38,20 @@ import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
 import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
-import Data.Maybe ( mapMaybe )
+import Data.List ( intercalate )
+import Data.Maybe ( fromMaybe, mapMaybe )
 import Data.Monoid
 import Data.Text ( Text )
+import qualified Data.Text as T
 import Data.Vector.Mutable ( STVector )
 import qualified Data.Vector.Mutable as V
+import Text.Printf
 
 import Database.Datalog.Errors
 import Database.Datalog.Database
+
+import Debug.Trace
+debug = flip trace
 
 data QueryState a = QueryState { intensionalDatabase :: Database a
                                , queryRules :: [(Clause a, [Literal Clause a])]
@@ -64,6 +70,11 @@ data Term a = LogicVar !Text
             | Atom a
               -- ^ A user-provided literal from the domain a
 
+instance (Show a) => Show (Term a) where
+  show (LogicVar t) = T.unpack t
+  show (BindVar t) = "??" ++ T.unpack t
+  show (Atom a) = show a
+
 instance (Hashable a) => Hashable (Term a) where
   hash (LogicVar t) = hash t `combine` 1
   hash (BindVar t) = hash t `combine` 2
@@ -79,13 +90,24 @@ data Clause a = Clause { clausePredicate :: Predicate
                        , clauseTerms :: [Term a]
                        }
 
+instance (Show a) => Show (Clause a) where
+  show (Clause p ts) =
+    printf "%s(%s)" (show p) (intercalate ", " (map show ts))
+
 data Adornment = Free !Int -- ^ The index to bind a free variable
                | BoundAtom
                | Bound !Int -- ^ The index to look for the binding of this variable
+               deriving (Show)
 
 data AdornedClause a = AdornedClause { adornedClausePredicate :: Predicate
                                      , adornedClauseTerms :: [(Term a, Adornment)]
                                      }
+
+instance (Show a) => Show (AdornedClause a) where
+  show (AdornedClause p ats) =
+    printf "%s(%s)" (show p) (intercalate ", " (map showAT ats))
+    where
+      showAT (t, a) = printf "%s[%s]" (show t) (show a)
 
 -- | Body clauses can be normal clauses, negated clauses, or
 -- conditionals.  Conditionals are arbitrary-arity (via a list)
@@ -99,12 +121,20 @@ data Literal ctype a = Literal (ctype a)
                      -- | Condition4 (a -> a -> a -> a -> Bool) (Term a, Term a, Term a, Term a) (HashMap (Term a) Int)
                      -- | Condition5 (a -> a -> a -> a -> a -> Bool) ((Term a, Term a, Term a, Term a, Term a) (HashMap (Term a) Int)
 
+instance (Show a, Show (ctype a)) => Show (Literal ctype a) where
+  show (Literal c) = show c
+  show (NegatedLiteral c) = '~' : show c
+  show (ConditionalClause _ ts _) = printf "f(%s)" (show ts)
+
 -- | A rule has a head and body clauses.  Body clauses can be normal
 -- clauses, negated clauses, or conditionals.
 data Rule a = Rule { ruleHead :: AdornedClause a
                    , ruleBody :: [Literal AdornedClause a]
                    , ruleVariableMap :: HashMap (Term a) Int
                    }
+
+instance (Show a) => Show (Rule a) where
+  show (Rule h b _) = printf "%s |- %s" (show h) (intercalate ", " (map show b))
 
 newtype Query a = Query { unQuery :: Clause a }
 
@@ -148,6 +178,9 @@ newtype Bindings s a = Bindings (STVector s a)
 -- in the tuple).  These are primarily used in database queries.
 data PartialTuple a = PartialTuple [(Int, a)]
 
+instance Show (PartialTuple a) where
+  show (PartialTuple vs) = show $ map (show . fst) vs
+
 -- | Convert a 'Query' into a 'PartialTuple' that can be used in a
 -- 'select' of the IDB
 queryToPartialTuple :: Query a -> PartialTuple a
@@ -184,12 +217,12 @@ tupleMatches (PartialTuple pvs) (Tuple vs) =
   where
     lookMatch (ix, v) =
       case lookup ix pvs of
-        Nothing -> False
+        Nothing -> True -- Not bound, so anything matches
         Just v' -> v == v'
 
 {-# INLINE scanSpace #-}
 -- | The common worker for 'select' and 'matchAny'
-scanSpace :: (Eq a)
+scanSpace :: (Eq a, Hashable a)
              => ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
              -> Database a
              -> Predicate
@@ -199,16 +232,21 @@ scanSpace f db p pt = f (tupleMatches pt) space
   where
     -- FIXME: This is where we use the index, if available.  If not,
     -- we have to fall back to a table scan
-    Just space = dataForPredicate db p
+
+    -- Note that the relation might not exist in the database here
+    -- because this is the first time data is being inferred for the
+    -- EDB.  In that case, just start with empty data and the project
+    -- step will insert the table into the database for the next step.
+    space = fromMaybe mempty (dataForPredicate db p)
 
 -- | Return all of the tuples in the given relation that match the
 -- given PartialTuple
-select :: (Eq a) => Database a -> Predicate -> PartialTuple a -> [Tuple a]
+select :: (Eq a, Hashable a) => Database a -> Predicate -> PartialTuple a -> [Tuple a]
 select db p = HS.toList . scanSpace HS.filter db p
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
-anyMatch :: (Eq a) => Database a -> Predicate -> PartialTuple a -> Bool
+anyMatch :: (Eq a, Hashable a) => Database a -> Predicate -> PartialTuple a -> Bool
 anyMatch = scanSpace F.any
 
 {-# INLINE joinLiteralWith #-}
@@ -217,7 +255,9 @@ joinLiteralWith :: AdornedClause a
                    -> [Bindings s a]
                    -> (Bindings s a -> PartialTuple a -> ST s [Bindings s a])
                    -> ST s [Bindings s a]
-joinLiteralWith c bs f = concatMapM (apply c f) bs
+joinLiteralWith c bs f = do
+  r <- concatMapM (apply c f) bs
+  return r `debug` printf "> %d input bindings -> %d output bindings\n" (length bs) (length r)
   where
     apply cl fn b = do
       pt <- buildPartialTuple cl b
@@ -263,15 +303,15 @@ applyJoinCondition p vs m acc b@(Bindings binds) = do
 -- produces one set of bindings for each possible value of the free
 -- variables in the rule (or could be empty if there are no matching
 -- tuples).
-normalJoin :: (Eq a) => Database a -> AdornedClause a -> Bindings s a
+normalJoin :: (Eq a, Hashable a) => Database a -> AdornedClause a -> Bindings s a
               -> PartialTuple a -> ST s [Bindings s a]
-normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) ts
+normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) (ts `debug` printf "Join adding %d tuples\n" (length ts))
   where
-    ts = select db (adornedClausePredicate c) pt
+    ts = select db (adornedClausePredicate c) pt `debug` (" Attempting a select with pt: " ++ show pt)
 
 -- | Retain the input binding if there are no matches in the database
 -- for the input PartialTuple.  Otherwise reject it.
-negatedJoin :: (Eq a) => Database a -> AdornedClause a -> Bindings s a
+negatedJoin :: (Eq a, Hashable a) => Database a -> AdornedClause a -> Bindings s a
                -> PartialTuple a -> ST s [Bindings s a]
 negatedJoin db c binds pt =
   case anyMatch db (adornedClausePredicate c) pt of
@@ -356,8 +396,8 @@ issueQuery = return . Query
 adornRule :: (Failure DatalogError m, Eq a, Hashable a)
               => Query a -> (Clause a, [Literal Clause a]) -> m (Rule a)
 adornRule q (hd, lits) = do
-  (vmap, Literal hd') <- adornLiteral mempty (Literal hd)
-  (allVars, lits') <- mapAccumM adornLiteral vmap lits
+  (vmap, lits') <- mapAccumM adornLiteral mempty lits
+  (allVars, Literal hd') <- adornLiteral vmap (Literal hd)
   let headVars = HS.fromList (clauseTerms hd)
   -- FIXME: This test isn't actually strict enough.  All head vars
   -- must appear in a non-negative literal
@@ -409,7 +449,8 @@ runQuery qm idb = do
 applyRule :: (Failure DatalogError m, Eq a, Hashable a)
              => Database a -> Rule a -> m (Database a)
 applyRule db r = return $ runST $ do
-  bs <- foldM (joinLiteral db) [] b
+  v0 <- V.new (HM.size m)
+  bs <- foldM (joinLiteral db) [Bindings v0] b `debug` printf "Applying %d clauses in the rule body\n" (length b)
   projectLiteral db h m bs
   where
     h = ruleHead r

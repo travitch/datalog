@@ -40,6 +40,9 @@ import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
 
+import Debug.Trace
+debug = flip trace
+
 -- FIXME: Unify predicate and relation for simplicity, also remove the
 -- distinction between IDB and EDB predicates
 
@@ -50,7 +53,7 @@ data QueryPlan a = QueryPlan (Query a) [[Rule a]]
 -- | This is a shortcut to build a query plan and execute in one step,
 -- with no bindings provided.  It doesn't make sense to have bindings
 -- in one-shot queries.
-queryDatabase :: (Failure DatalogError m, Eq a, Hashable a)
+queryDatabase :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                  => Database a -- ^ The intensional database of facts
                  -> QueryBuilder m a (Query a) -- ^ A monad building up a set of rules and returning a Query
                  -> m [[a]]
@@ -61,7 +64,7 @@ queryDatabase idb qm = do
 -- | Given a query description, build a query plan by stratifying the
 -- rules and performing the magic sets transformation.  Throws an
 -- error if the rules cannot be stratified.
-buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a)
+buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                   => Database a
                   -> QueryBuilder m a (Query a)
                   -> m (QueryPlan a)
@@ -76,7 +79,7 @@ buildQueryPlan idb qm = do
 -- bindings (substituted in for 'BindVar's).  Throw an error if:
 --
 --  * The rules and database define the same relation
-executeQueryPlan :: (Failure DatalogError m, Eq a, Hashable a)
+executeQueryPlan :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                     => QueryPlan a -> Database a -> [(Text, a)] -> m [[a]]
 executeQueryPlan (QueryPlan q strata) idb bindings = do
   -- FIXME: Bindings is used to substitute in values for BoundVars in
@@ -90,7 +93,7 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
 -- Private helpers
 
 -- | Execute the query plan until no new facts are added to the database
-executePlan' :: (Failure DatalogError m, Eq a, Hashable a)
+executePlan' :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 => [[Rule a]] -> Database a -> m (Database a)
 executePlan' strata db = do
   db' <- applyStrata strata db
@@ -101,11 +104,11 @@ executePlan' strata db = do
 -- | Apply the rules in each stratum bottom-up.  Stop at a stratum if
 -- nothing changes (since no new facts can be added in later stages if
 -- nothing changed in a lower stage)
-applyStrata :: (Failure DatalogError m, Eq a, Hashable a)
+applyStrata :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                => [[Rule a]] -> Database a -> m (Database a)
 applyStrata [] db = return db
 applyStrata (s:strata) db = do
-  db' <- foldM applyRule db s
+  db' <- foldM applyRule db s `debug` ("Applying rule " ++ show s)
   case databasesDiffer db db' of
-    True -> applyStrata strata db'
+    True -> applyStrata strata db' `debug` "Databases differ, re-running rules"
     False -> return db

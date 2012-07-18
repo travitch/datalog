@@ -33,5 +33,6 @@ test-suite AncestorTest
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: AncestorTest.hs
+  ghc-options: -Wall
   build-depends: datalog, base > 3 && < 5, text, containers,
                  test-framework, test-framework-hunit, HUnit
