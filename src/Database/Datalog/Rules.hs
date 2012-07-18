@@ -7,7 +7,7 @@
 -- Free variables.
 module Database.Datalog.Rules (
   Adornment(..),
-  Term(..),
+  Term(LogicVar, BindVar, Anything, Atom),
   Clause(..),
   AdornedClause(..),
   Rule(..),
@@ -74,23 +74,35 @@ data Term a = LogicVar !Text
             | BindVar !Text
               -- ^ A special variable available in queries that can be
               -- bound at query execution time
+            | Anything
+              -- ^ A term that is allowed to take any value (this is
+              -- sugar for a fresh logic variable)
             | Atom a
               -- ^ A user-provided literal from the domain a
+            | FreshVar !Int
+              -- ^ A fresh logic variable, generated internally for
+              -- each Anything occurrence.  Not exposed to the user
 
 instance (Show a) => Show (Term a) where
   show (LogicVar t) = T.unpack t
   show (BindVar t) = "??" ++ T.unpack t
   show (Atom a) = show a
+  show Anything = "*"
+  show (FreshVar _) = "*"
 
 instance (Hashable a) => Hashable (Term a) where
   hash (LogicVar t) = hash t `combine` 1
   hash (BindVar t) = hash t `combine` 2
   hash (Atom a) = hash a
+  hash Anything = 99
+  hash (FreshVar i) = 22 `combine` hash i
 
 instance (Eq a) => Eq (Term a) where
   (LogicVar t1) == (LogicVar t2) = t1 == t2
   (BindVar t1) == (BindVar t2) = t1 == t2
   (Atom a1) == (Atom a2) = a1 == a2
+  Anything == Anything = True
+  FreshVar i1 == FreshVar i2 = i1 == i2
   _ == _ = False
 
 data Clause a = Clause { clauseRelation :: Relation
@@ -469,6 +481,10 @@ adornLiteral boundVars l =
         -- Atoms are always bound
         Atom _ -> return (bvs, (t, BoundAtom))
         BindVar _ -> error "Bind variables are only allowed in queries"
+        Anything ->
+          let ix = HM.size bvs
+              t' = FreshVar ix
+          in return (HM.insert t' ix bvs, (t', Free ix))
         LogicVar _ ->
           -- The first occurrence is Free, while the rest are Bound
           case HM.lookup t bvs of
@@ -476,6 +492,7 @@ adornLiteral boundVars l =
             Nothing ->
               let ix = HM.size bvs
               in return (HM.insert t ix bvs, (t, Free ix))
+        FreshVar _ -> error "Users cannot create FreshVars"
 
 -- | Run the QueryBuilder action to build a query and initial rule
 -- database
