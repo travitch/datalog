@@ -22,7 +22,7 @@ import Database.Datalog.Rules
 data RuleDep = DepNormal | DepNegated
              deriving (Eq, Ord)
 
-type RuleDepGraph = Gr Predicate RuleDep
+type RuleDepGraph = Gr Relation RuleDep
 
 -- | Stratify the input rules and magic rules; the rules should be
 -- processed to a fixed-point in this order
@@ -38,7 +38,7 @@ stratifyRules rs =
     comps :: [[LNode RuleDepGraph]]
     comps = topsort' g'
 
-    stratumNumbers :: HashMap Predicate Int
+    stratumNumbers :: HashMap Relation Int
     stratumNumbers = foldr (computeStratumNumbers g) mempty comps
 
     hasInternalNegation :: [LNode RuleDepGraph] -> Bool
@@ -49,17 +49,17 @@ stratifyRules rs =
           internalNegatedEdges = filter ((`elem` nids) . fst) negatedEdges
       in not (null internalNegatedEdges)
 
--- | Given the stratum number for each Predicate, place rules headed
--- with that Predicate in their respective strata.  This is
+-- | Given the stratum number for each Relation, place rules headed
+-- with that Relation in their respective strata.  This is
 -- represented with an IntMap, which keeps the strata sorted.  This is
 -- expanded into a different form by the caller.
-assignRule :: HashMap Predicate Int -> Rule a -> IntMap [Rule a] -> IntMap [Rule a]
+assignRule :: HashMap Relation Int -> Rule a -> IntMap [Rule a] -> IntMap [Rule a]
 assignRule stratumNumbers r = IM.insertWith (++) snum [r]
   where
-    headPred = adornedClausePredicate (ruleHead r)
+    headPred = adornedClauseRelation (ruleHead r)
     Just snum = HM.lookup headPred stratumNumbers
 
--- | Compute the stratum number for each 'Predicate'.  This requires a
+-- | Compute the stratum number for each 'Relation'.  This requires a
 -- fixed-point computation for each node in each SCC.  Nodes can get
 -- different stratum numbers from other members of their SCC
 --
@@ -69,8 +69,8 @@ assignRule stratumNumbers r = IM.insertWith (++) snum [r]
 -- numbers imply that the query is not stratified).
 computeStratumNumbers :: RuleDepGraph
                          -> [LNode RuleDepGraph]
-                         -> HashMap Predicate Int
-                         -> HashMap Predicate Int
+                         -> HashMap Relation Int
+                         -> HashMap Relation Int
 computeStratumNumbers g c acc =
   let tbl' = foldr (computeStratumNumber g) acc c
   in case tbl' == acc of
@@ -79,8 +79,8 @@ computeStratumNumbers g c acc =
 
 computeStratumNumber :: RuleDepGraph
                         -> LNode RuleDepGraph
-                        -> HashMap Predicate Int
-                        -> HashMap Predicate Int
+                        -> HashMap Relation Int
+                        -> HashMap Relation Int
 computeStratumNumber g ln acc =
   HM.insert (nodeLabel ln) stratNum acc
   where
@@ -102,7 +102,7 @@ computeStratumNumber g ln acc =
           DepNegated -> 1 + snum
           DepNormal -> snum
 
--- | Build a dependency graph between rules.  Each Predicate (goal
+-- | Build a dependency graph between rules.  Each Relation (goal
 -- head) is a node in the graph.  There is an edge between the head
 -- predicate and each body predicate.
 --
@@ -111,7 +111,7 @@ computeStratumNumber g ln acc =
 makeRuleDepGraph :: [Rule a] -> RuleDepGraph
 makeRuleDepGraph rs = mkGraph ns es
   where
-    preds = unique $ concatMap rulePredicates rs
+    preds = unique $ concatMap ruleRelations rs
     ns = zipWith LNode [0..] preds
 
     predToIdMap = HM.fromList $ zip preds [0..]
@@ -122,7 +122,7 @@ makeRuleDepGraph rs = mkGraph ns es
     -- each predicate in the body.  The edge should have a DepNegated
     -- label if the clause is a negated clause.
     ruleToEdges r acc =
-      let headPred = adornedClausePredicate (ruleHead r)
+      let headPred = adornedClauseRelation (ruleHead r)
           src = predToId headPred
       in foldr (toEdge src) acc (ruleBody r)
     toEdge src bc acc =

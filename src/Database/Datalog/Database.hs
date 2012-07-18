@@ -3,18 +3,16 @@ module Database.Datalog.Database (
   Relation(..),
   Database,
   DatabaseBuilder,
-  Predicate(..),
   Tuple(..),
   -- * Functions
   makeDatabase,
   addRelation,
   assertFact,
-  databasePredicates,
+  databaseRelations,
   databaseRelation,
   databasesDiffer,
-  dataForPredicate,
+  dataForRelation,
   addTupleToRelation,
-  predicateToRelation,
   replaceRelation,
   ensureDatabaseRelation
   ) where
@@ -39,14 +37,6 @@ newtype Tuple a = Tuple { unTuple ::  [a] }
 instance (Hashable a) => Hashable (Tuple a) where
   hash (Tuple es) = hash es
 
-data Predicate = RelationPredicate Relation
-               | InferencePredicate Text
-               deriving (Eq, Show)
-
-instance Hashable Predicate where
-  hash (InferencePredicate t) = hash t
-  hash (RelationPredicate (Relation t)) = hash t
-
 -- | A relation whose elements are fixed-length lists of a
 -- user-defined type.  This is only used internally and is not exposed
 -- to the user.
@@ -64,6 +54,9 @@ newtype Database a = Database (HashMap Text (DBRelation a))
 -- revealing details of its implementation
 newtype Relation = Relation Text
                  deriving (Eq, Show)
+
+instance Hashable Relation where
+  hash (Relation t) = hash t
 
 -- | The monad in which databases are constructed and initial facts
 -- are asserted
@@ -144,25 +137,17 @@ databaseRelation (Database m) (Relation t) =
     Just r -> r
 
 -- | Get all of the predicates referenced in the database
-databasePredicates :: Database a -> [Predicate]
-databasePredicates (Database m) =
-  map (RelationPredicate . Relation) (HM.keys m)
+databaseRelations :: Database a -> [Relation]
+databaseRelations (Database m) =
+  map Relation (HM.keys m)
 
 -- | Get all of the tuples for the given predicate/relation in the database.
-dataForPredicate :: (Failure DatalogError m)
-                        => Database a -> Predicate -> m (HashSet (Tuple a))
-dataForPredicate (Database m) p =
+dataForRelation :: (Failure DatalogError m)
+                        => Database a -> Relation -> m (HashSet (Tuple a))
+dataForRelation (Database m) (Relation txt) =
   case HM.lookup txt m of
     Nothing -> failure $ NoRelationError txt
     Just r -> return $ relationData r
-  where
-    Relation txt = predicateToRelation p
-
-predicateToRelation :: Predicate -> Relation
-predicateToRelation p =
-  case p of
-    RelationPredicate (Relation t) -> Relation t
-    InferencePredicate t -> Relation t
 
 databasesDiffer :: Database a -> Database a -> Bool
 databasesDiffer (Database db1) (Database db2) =

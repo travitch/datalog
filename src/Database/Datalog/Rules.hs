@@ -19,7 +19,7 @@ module Database.Datalog.Rules (
   assertRule,
   relationPredicateFromName,
   inferencePredicate,
-  rulePredicates,
+  ruleRelations,
   issueQuery,
   applyRule,
   runQuery,
@@ -93,7 +93,7 @@ instance (Eq a) => Eq (Term a) where
   (Atom a1) == (Atom a2) = a1 == a2
   _ == _ = False
 
-data Clause a = Clause { clausePredicate :: Predicate
+data Clause a = Clause { clauseRelation :: Relation
                        , clauseTerms :: [Term a]
                        }
 
@@ -106,7 +106,7 @@ data Adornment = Free !Int -- ^ The index to bind a free variable
                | Bound !Int -- ^ The index to look for the binding of this variable
                deriving (Show)
 
-data AdornedClause a = AdornedClause { adornedClausePredicate :: Predicate
+data AdornedClause a = AdornedClause { adornedClauseRelation :: Relation
                                      , adornedClauseTerms :: [(Term a, Adornment)]
                                      }
 
@@ -123,10 +123,10 @@ data Literal ctype a = Literal (ctype a)
                      | NegatedLiteral (ctype a)
                      | ConditionalClause ([a] -> Bool) [Term a] (HashMap (Term a) Int)
 
-lit :: Predicate -> [Term a] -> Literal Clause a
+lit :: Relation -> [Term a] -> Literal Clause a
 lit p ts = Literal $ Clause p ts
 
-negLit :: Predicate -> [Term a] -> Literal Clause a
+negLit :: Relation -> [Term a] -> Literal Clause a
 negLit p ts = NegatedLiteral $ Clause p ts
 
 cond1 :: (Eq a, Hashable a)
@@ -180,11 +180,17 @@ newtype Query a = Query { unQuery :: Clause a }
 infixr 0 |-
 
 -- | Assert a rule
-(|-) :: (Failure DatalogError m) => (Predicate, [Term a]) -> [Literal Clause a] -> QueryBuilder m a ()
+(|-) :: (Failure DatalogError m)
+        => (Relation, [Term a]) -- ^ The rule head
+        -> [Literal Clause a] -- ^ Body literals
+        -> QueryBuilder m a ()
 (|-) = assertRule
 
 -- | Assert a rule
-assertRule :: (Failure DatalogError m) => (Predicate, [Term a]) -> [Literal Clause a] -> QueryBuilder m a ()
+assertRule :: (Failure DatalogError m)
+              => (Relation, [Term a])
+              -> [Literal Clause a]
+              -> QueryBuilder m a ()
 assertRule (p, ts) b = do
   let h = Clause p ts
   s <- get
@@ -193,17 +199,17 @@ assertRule (p, ts) b = do
 -- | Retrieve a Relation handle from the IDB.  If the Relation does
 -- not exist, an error will be raised.
 relationPredicateFromName :: (Failure DatalogError m)
-                             => Text -> QueryBuilder m a Predicate
+                             => Text -> QueryBuilder m a Relation
 relationPredicateFromName name = do
   idb <- gets intensionalDatabase
-  case RelationPredicate (Relation name) `elem` databasePredicates idb of
+  case Relation name `elem` databaseRelations idb of
     False -> lift $ failure (NoRelationError name)
-    True -> return $! (RelationPredicate (Relation name))
+    True -> return $! Relation name
 
 -- | Create a new predicate that will be referenced by an EDB rule
 inferencePredicate :: (Failure DatalogError m)
-                      => Text -> QueryBuilder m a Predicate
-inferencePredicate = return . InferencePredicate
+                      => Text -> QueryBuilder m a Relation
+inferencePredicate = return . Relation
 
 -- | Bindings are vectors of values.  Each variable in a rule is
 -- assigned an index in the Bindings during the adornment process.
@@ -265,7 +271,7 @@ tupleMatches (PartialTuple pvs) (Tuple vs) =
 scanSpace :: (Eq a, Hashable a)
              => ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
              -> Database a
-             -> Predicate
+             -> Relation
              -> PartialTuple a
              -> b
 scanSpace f db p pt = f (tupleMatches pt) space
@@ -277,16 +283,16 @@ scanSpace f db p pt = f (tupleMatches pt) space
     -- because this is the first time data is being inferred for the
     -- EDB.  In that case, just start with empty data and the project
     -- step will insert the table into the database for the next step.
-    space = fromMaybe mempty (dataForPredicate db p)
+    space = fromMaybe mempty (dataForRelation db p)
 
 -- | Return all of the tuples in the given relation that match the
 -- given PartialTuple
-select :: (Eq a, Hashable a) => Database a -> Predicate -> PartialTuple a -> [Tuple a]
+select :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
 select db p = HS.toList . scanSpace HS.filter db p
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
-anyMatch :: (Eq a, Hashable a) => Database a -> Predicate -> PartialTuple a -> Bool
+anyMatch :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> Bool
 anyMatch = scanSpace F.any
 
 {-# INLINE joinLiteralWith #-}
@@ -345,16 +351,16 @@ applyJoinCondition p vs m acc b@(Bindings binds) = do
 -- tuples).
 normalJoin :: (Eq a, Hashable a) => Database a -> AdornedClause a -> Bindings s a
               -> PartialTuple a -> ST s [Bindings s a]
-normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) (ts `debug` printf "Join adding %d tuples\n" (length ts))
+normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) ts `debug` printf "Join adding %d tuples\n" (length ts)
   where
-    ts = select db (adornedClausePredicate c) pt `debug` (" Attempting a select with pt: " ++ show pt)
+    ts = select db (adornedClauseRelation c) pt `debug` (" Attempting a select with pt: " ++ show pt)
 
 -- | Retain the input binding if there are no matches in the database
 -- for the input PartialTuple.  Otherwise reject it.
 negatedJoin :: (Eq a, Hashable a) => Database a -> AdornedClause a -> Bindings s a
                -> PartialTuple a -> ST s [Bindings s a]
 negatedJoin db c binds pt =
-  case anyMatch db (adornedClausePredicate c) pt of
+  case anyMatch db (adornedClauseRelation c) pt of
     True -> return []
     False -> return [binds]
 
@@ -403,8 +409,7 @@ projectLiteral :: (Eq a, Hashable a)
                   -> [Bindings s a]
                   -> ST s (Database a)
 projectLiteral db c vmap bs = do
-  let p = adornedClausePredicate c
-      r = predicateToRelation p
+  let r = adornedClauseRelation c
       rel = ensureDatabaseRelation db r (length (adornedClauseTerms c))
   rel' <- foldM project rel bs
   return $ replaceRelation db rel'
@@ -413,20 +418,20 @@ projectLiteral db c vmap bs = do
       t <- bindingsToTuple c vmap b
       return $ addTupleToRelation r t
 
-literalClausePredicate :: Literal AdornedClause a -> Maybe Predicate
-literalClausePredicate bc =
+literalClauseRelation :: Literal AdornedClause a -> Maybe Relation
+literalClauseRelation bc =
   case bc of
-    Literal c -> Just $ adornedClausePredicate c
-    NegatedLiteral c -> Just $ adornedClausePredicate c
+    Literal c -> Just $ adornedClauseRelation c
+    NegatedLiteral c -> Just $ adornedClauseRelation c
     _ -> Nothing
 
-rulePredicates :: Rule a -> [Predicate]
-rulePredicates (Rule h bcs _) = adornedClausePredicate h : mapMaybe literalClausePredicate bcs
+ruleRelations :: Rule a -> [Relation]
+ruleRelations (Rule h bcs _) = adornedClauseRelation h : mapMaybe literalClauseRelation bcs
 
 -- | Turn a Clause into a Query.  This is meant to be the last
 -- statement in a QueryBuilder monad.
-issueQuery :: (Failure DatalogError m) => Predicate -> [Term a] -> QueryBuilder m a (Query a)
-issueQuery p ts = return $ Query $ Clause p ts
+issueQuery :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Query a)
+issueQuery r ts = return $ Query $ Clause r ts
 
 -- If the query has a bound literal, that influences the rules it
 -- corresponds to.  Other rules are not affected.  Those positions
@@ -497,8 +502,8 @@ applyRule db r = return $ runST $ do
     b = ruleBody r
     m = ruleVariableMap r
 
-queryPredicate :: Query a -> Predicate
-queryPredicate = clausePredicate . unQuery
+queryPredicate :: Query a -> Relation
+queryPredicate = clauseRelation . unQuery
 
 -- Helpers missing from the standard libraries
 

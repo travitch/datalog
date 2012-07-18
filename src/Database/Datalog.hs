@@ -5,7 +5,6 @@ module Database.Datalog (
   Relation,
   DatabaseBuilder,
   QueryBuilder,
-  Predicate,
   Term(..),
   QueryPlan,
 
@@ -45,10 +44,6 @@ import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
 
--- FIXME: Unify predicate and relation for simplicity, also remove the
--- distinction between IDB and EDB predicates
-
-
 -- | A fully-stratified query plan that is ready to be executed.
 data QueryPlan a = QueryPlan (Query a) [[Rule a]]
 
@@ -71,7 +66,7 @@ buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                   -> QueryBuilder m a (Query a)
                   -> m (QueryPlan a)
 buildQueryPlan idb qm = do
-  let ipreds = databasePredicates idb
+  let ipreds = databaseRelations idb
   (q, rs) <- runQuery qm idb
   rs' <- magicSetsRules ipreds q rs
   strata <- stratifyRules rs'
