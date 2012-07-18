@@ -32,6 +32,7 @@ db1 = makeDatabase $ do
                   ]
       mapM_ (assertFact parentOf) facts
 
+t1 :: Assertion
 t1 = do
   let Just db = db1
   res <- queryDatabase db q
@@ -52,6 +53,7 @@ t1 = do
       Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
       issueQuery $ Clause ancestorOf [x, Atom "John" ]
 
+t2 :: Assertion
 t2 = do
   let Just db = db1
   res <- queryDatabase db q
@@ -70,6 +72,7 @@ t2 = do
       Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
       issueQuery $ Clause ancestorOf [x, Atom "Mary" ]
 
+t3 :: Assertion
 t3 = do
   let Just db = db1
   res <- queryDatabase db q
@@ -88,6 +91,7 @@ t3 = do
       Clause ancestorOf [x, y] |- [ lit parentOf [x, z], lit ancestorOf [z, y] ]
       issueQuery $ Clause ancestorOf [Atom "Sue", x ]
 
+t4 :: Assertion
 t4 = do
   let Just db = db1
   res <- queryDatabase db q
