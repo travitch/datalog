@@ -17,8 +17,9 @@ tests :: [Test]
 tests = [ testGroup "t1" [ testCase "1" t1
                          , testCase "2" t2
                          , testCase "3" t3
-                           -- , testCase "4" t4
-                         ] ]
+                         , testCase "4" t4
+                         ]
+        ]
 
 data WorkInfo = EID !Int -- id
               | EN !Text -- Name
@@ -121,7 +122,7 @@ t2 = do
       Just qp = buildQueryPlan db q1
 
   res <- executeQueryPlan qp db [("name", EN "Lilian")]
-  assertEqual "t1" expected (fromList res)
+  assertEqual "t2" expected (fromList res)
   where
     expected = fromList [ [EN "Lilian", EN "Sameer"]
                         , [EN "Lilian", EN "Bob"]
@@ -157,7 +158,62 @@ t3 = do
       Just qp = buildQueryPlan db q2
 
   res <- executeQueryPlan qp db [("name", EN "Lilian")]
-  assertEqual "t1" expected (fromList res)
+  assertEqual "t3" expected (fromList res)
   where
     expected = fromList [ [EN "Lilian", EN "Sameer"]
+                        ]
+
+
+q3 = do
+  employee <- relationPredicateFromName "employee"
+  bossOf <- relationPredicateFromName "bossOf"
+  worksFor <- inferencePredicate "worksFor"
+  empJobStar <- inferencePredicate "employeeJob*"
+  empJob <- inferencePredicate "employeeJob"
+  canDo <- relationPredicateFromName "canDo"
+  jobReplacement <- relationPredicateFromName "jobCanBeDoneBy"
+  jobExceptions <- relationPredicateFromName "jobExceptions"
+  bj <- inferencePredicate "bj"
+  let x = LogicVar "X"
+      y = LogicVar "Y"
+      z = LogicVar "Z"
+      jid = LogicVar "ID"
+      pos = LogicVar "Pos"
+      eid = LogicVar "E-ID"
+      bid = LogicVar "B-ID"
+  (worksFor, [x, y]) |- [ lit bossOf [bid, eid]
+                        , lit employee [eid, x, Anything, Anything]
+                        , lit employee [bid, y, Anything, Anything]
+                        ]
+  (worksFor, [x, y]) |- [ lit worksFor [x, z]
+                        , lit worksFor [z, y]
+                        ]
+  (empJobStar, [x, y]) |- [ lit employee [Anything, x, pos, Anything]
+                          , lit canDo [pos, y]
+                          ]
+  (empJobStar, [x, y]) |- [ lit jobReplacement [y, z]
+                          , lit empJobStar [x, z]
+                          ]
+  (empJobStar, [x, y]) |- [ lit canDo [Anything, y]
+                          , lit employee [Anything, x, Atom (EP "Boss")]
+                          ]
+  (empJob, [x, y]) |- [ lit empJobStar [x, y]
+                      , lit employee [jid, x, Anything, Anything]
+                      , negLit jobExceptions [jid, y]
+                      ]
+  (bj, [x, y]) |- [ lit worksFor [x, y]
+                  , negLit empJob [y, Atom (J "PC Support")]
+                  ]
+  issueQuery empJob [ BindVar "name", x ]
+
+t4 :: Assertion
+t4 = do
+  let Just db = db1
+      Just qp = buildQueryPlan db q3
+
+  res <- executeQueryPlan qp db [("name", EN "Li")]
+  assertEqual "t4" expected (fromList res)
+  where
+    expected = fromList [ [EN "Li", J "PC Support"]
+                        , [EN "Li", J "Server Support"]
                         ]
