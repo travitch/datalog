@@ -5,11 +5,17 @@ import Control.Failure
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
+import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
 import Data.IntMap ( IntMap )
 import qualified Data.IntMap as IM
 import Data.Maybe ( fromJust )
 import Data.Monoid
+
+-- FIXME Use Data.Graph from containers to remove the fgl/hbgl
+-- dependency.  Specifically, use stronglyConnComR (which topsorts the
+-- SCCs it identifies).  Maintain a separate map that just notes
+-- negated dependencies: HashMap (Relation, Relation) Bool
 
 import Data.Graph.Interface
 import Data.Graph.LazyHAMT
@@ -59,6 +65,16 @@ assignRule stratumNumbers r = IM.insertWith (++) snum [r]
     headPred = adornedClauseRelation (ruleHead r)
     Just snum = HM.lookup headPred stratumNumbers
 
+-- FIXME: The stratum number of each member of an SCC will be the same
+-- because all rules in an SCC depend on one another, and the stratum
+-- number is the maximum number of negations reachable from a node.
+-- since they all depend on one another and there can't be negations
+-- within an SCC, all rules in an SCC must have the same stratum
+-- number (which makes sense - all members of an SCC need to be
+-- re-evaluated until a fixed-point is reached).  This makes the
+-- stratum number computation easy - just take the maximum over all of
+-- the rules in the SCC.
+
 -- | Compute the stratum number for each 'Relation'.  This requires a
 -- fixed-point computation for each node in each SCC.  Nodes can get
 -- different stratum numbers from other members of their SCC
@@ -101,6 +117,23 @@ computeStratumNumber g ln acc =
         in case elbl of
           DepNegated -> 1 + snum
           DepNormal -> snum
+
+-- The Key is the Relation name and the value is the set of relations
+-- it depends on.  The bool is True if the dependency is via negation.
+type DepGraph = HashMap Relation (HashSet (Relation, Bool))
+
+makeRuleDependencies :: [Rule a] -> DepGraph
+makeRuleDependencies = foldr addRuleDeps mempty
+  where
+    addRuleDeps (Rule (AdornedClause hrel _) b _) acc =
+      foldr (addLitDeps hrel) acc b
+    addLitDeps hrel l acc =
+      case l of
+        Literal (AdornedClause r _) ->
+          HM.insertWith HS.union hrel (HS.singleton (r, False)) acc
+        NegatedLiteral (AdornedClause r _) ->
+          HM.insertWith HS.union hrel (HS.singleton (r, True)) acc
+        ConditionalClause _ _ _ -> acc
 
 -- | Build a dependency graph between rules.  Each Relation (goal
 -- head) is a node in the graph.  There is an edge between the head

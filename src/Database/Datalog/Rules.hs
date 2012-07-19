@@ -290,7 +290,11 @@ scanSpace :: (Eq a, Hashable a)
 scanSpace f db p pt = f (tupleMatches pt) space
   where
     -- FIXME: This is where we use the index, if available.  If not,
-    -- we have to fall back to a table scan
+    -- we have to fall back to a table scan.  Instead of computing
+    -- indices up front, it may be best to only compute them on the
+    -- fly (and then only if they will be referenced again later).
+    -- They can be thrown away as soon as they can't be referenced
+    -- again.  This will save storage and up-front costs.
 
     -- Note that the relation might not exist in the database here
     -- because this is the first time data is being inferred for the
