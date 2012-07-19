@@ -17,12 +17,11 @@ cabal-version:       >=1.10
 library
   default-language: Haskell2010
   exposed-modules: Database.Datalog
-                   Database.Datalog.Database
+  other-modules:   Database.Datalog.Database
                    Database.Datalog.Errors
                    Database.Datalog.Rules
                    Database.Datalog.Stratification
                    Database.Datalog.MagicSets
-  -- other-modules:
   build-depends: base ==4.5.*, containers, unordered-containers, hashable,
                  failure, text, mtl, hbgl, vector
   hs-source-dirs: src
