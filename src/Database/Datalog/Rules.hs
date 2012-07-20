@@ -209,6 +209,11 @@ assertRule (p, ts) b = do
   s <- get
   put s { queryRules = (h, b) : queryRules s }
 
+
+-- FIXME: Unify these and require inferred relations to be declared in
+-- the schema at db construction time.  That also gives an opportunity
+-- to name the columns
+
 -- | Retrieve a Relation handle from the IDB.  If the Relation does
 -- not exist, an error will be raised.
 relationPredicateFromName :: (Failure DatalogError m)
@@ -235,7 +240,7 @@ newtype Bindings s a = Bindings (STVector s a)
 
 -- | A partial tuple records the atoms in a tuple (with their indices
 -- in the tuple).  These are primarily used in database queries.
-data PartialTuple a = PartialTuple [(Int, a)]
+newtype PartialTuple a = PartialTuple [(Int, a)]
 
 instance Show (PartialTuple a) where
   show (PartialTuple vs) = show $ map (show . fst) vs
