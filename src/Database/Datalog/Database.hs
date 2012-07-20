@@ -53,7 +53,7 @@ newtype Database a = Database (HashMap Text (DBRelation a))
 -- | A wrapper to expose the relation name to callers without
 -- revealing details of its implementation
 newtype Relation = Relation Text
-                 deriving (Eq, Show)
+                 deriving (Eq, Ord, Show)
 
 instance Hashable Relation where
   hash (Relation t) = hash t
