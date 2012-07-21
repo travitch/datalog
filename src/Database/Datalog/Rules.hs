@@ -8,7 +8,7 @@
 module Database.Datalog.Rules (
   Adornment(..),
   Term(LogicVar, BindVar, Anything, Atom),
-  Clause(..),
+  Clause,
   AdornedClause(..),
   Rule(..),
   Literal(..),
@@ -135,6 +135,7 @@ instance (Show a) => Show (AdornedClause a) where
 data Literal ctype a = Literal (ctype a)
                      | NegatedLiteral (ctype a)
                      | ConditionalClause ([a] -> Bool) [Term a] (HashMap (Term a) Int)
+--                     | MagicLiteral (ctype a)
 
 lit :: Relation -> [Term a] -> Literal Clause a
 lit p ts = Literal $ Clause p ts
@@ -193,17 +194,11 @@ newtype Query a = Query { unQuery :: Clause a }
 infixr 0 |-
 
 -- | Assert a rule
-(|-) :: (Failure DatalogError m)
+(|-), assertRule :: (Failure DatalogError m)
         => (Relation, [Term a]) -- ^ The rule head
         -> [Literal Clause a] -- ^ Body literals
         -> QueryBuilder m a ()
 (|-) = assertRule
-
--- | Assert a rule
-assertRule :: (Failure DatalogError m)
-              => (Relation, [Term a])
-              -> [Literal Clause a]
-              -> QueryBuilder m a ()
 assertRule (p, ts) b = do
   let h = Clause p ts
   s <- get
