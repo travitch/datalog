@@ -302,7 +302,9 @@ scanSpace f db p pt = f (tupleMatches pt) space
 -- | Return all of the tuples in the given relation that match the
 -- given PartialTuple
 select :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
-select db p = HS.toList . scanSpace HS.filter db p
+select db p = scanSpace f db p
+  where
+    f test = F.foldr (\t acc -> if test t then t : acc else acc) []
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
