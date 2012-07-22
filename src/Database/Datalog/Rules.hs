@@ -266,15 +266,21 @@ buildPartialTuple c binds =
         _ -> return acc
 
 -- | Determine if a PartialTuple and a concrete Tuple from the
--- database match.
+-- database match.  Walks the partial tuple (which is sorted by index)
+-- and the current tuple in parallel and tries to avoid allocations as
+-- much as possible.
 tupleMatches :: (Eq a) => PartialTuple a -> Tuple a -> Bool
 tupleMatches (PartialTuple pvs) (Tuple vs) =
-  all lookMatch (zip [0..] vs)
-  where
-    lookMatch (ix, v) =
-      case lookup ix pvs of
-        Nothing -> True -- Not bound, so anything matches
-        Just v' -> v == v'
+  parallelTupleWalk True 0 pvs vs
+
+parallelTupleWalk :: (Eq a) => Bool -> Int -> [(Int, a)] -> [a] -> Bool
+parallelTupleWalk False _ _ _ = False
+parallelTupleWalk !matches _ [] _ = matches
+parallelTupleWalk !matches !ix cpvs@((pix, pv):prest) (v:rest) =
+  case ix == pix of
+    False -> parallelTupleWalk matches (ix+1) cpvs rest
+    True -> parallelTupleWalk (pv==v) (ix+1) prest rest
+parallelTupleWalk _ _ _ [] = error "Tuple emptied before partial tuple"
 
 {-# INLINE scanSpace #-}
 -- | The common worker for 'select' and 'matchAny'
@@ -309,7 +315,9 @@ select db p = scanSpace f db p
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
 anyMatch :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> Bool
-anyMatch = scanSpace F.any
+anyMatch = scanSpace f
+  where
+    f test = F.foldr (\t !acc -> acc || if test t then True else False) False
 
 {-# INLINE joinLiteralWith #-}
 -- | The common worker for the non-conditional clause join functions.
