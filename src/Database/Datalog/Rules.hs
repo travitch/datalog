@@ -40,7 +40,6 @@ import Control.Applicative
 import Control.Failure
 import Control.Monad.State.Strict
 import Control.Monad.ST.Strict
-import qualified Data.Foldable as F
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
@@ -310,14 +309,14 @@ scanSpace f db p pt = f (tupleMatches pt) space
 select :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
 select db p = scanSpace f db p
   where
-    f test = F.foldr (\t acc -> if test t then t : acc else acc) []
+    f test = HS.foldr (\t acc -> if test t then t : acc else acc) []
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
 anyMatch :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> Bool
 anyMatch = scanSpace f
   where
-    f test = F.foldr (\t !acc -> acc || if test t then True else False) False
+    f test = HS.foldl' (\ !acc t -> acc || if test t then True else False) False
 
 {-# INLINE joinLiteralWith #-}
 -- | The common worker for the non-conditional clause join functions.
