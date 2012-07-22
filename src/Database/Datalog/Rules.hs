@@ -270,16 +270,15 @@ buildPartialTuple c binds =
 -- much as possible.
 tupleMatches :: (Eq a) => PartialTuple a -> Tuple a -> Bool
 tupleMatches (PartialTuple pvs) (Tuple vs) =
-  parallelTupleWalk True 0 pvs vs
+  parallelTupleWalk 0 pvs vs
 
-parallelTupleWalk :: (Eq a) => Bool -> Int -> [(Int, a)] -> [a] -> Bool
-parallelTupleWalk False _ _ _ = False
-parallelTupleWalk !matches _ [] _ = matches
-parallelTupleWalk !matches !ix cpvs@((pix, pv):prest) (v:rest) =
+parallelTupleWalk :: (Eq a) => Int -> [(Int, a)] -> [a] -> Bool
+parallelTupleWalk _ [] _ = True
+parallelTupleWalk !ix cpvs@((pix, pv):prest) (v:rest) =
   case ix == pix of
-    False -> parallelTupleWalk matches (ix+1) cpvs rest
-    True -> parallelTupleWalk (pv==v) (ix+1) prest rest
-parallelTupleWalk _ _ _ [] = error "Tuple emptied before partial tuple"
+    False -> parallelTupleWalk (ix+1) cpvs rest
+    True -> (v == pv) && parallelTupleWalk (ix+1) prest rest
+parallelTupleWalk _ _ [] = error "Tuple emptied before partial tuple"
 
 {-# INLINE scanSpace #-}
 -- | The common worker for 'select' and 'matchAny'
