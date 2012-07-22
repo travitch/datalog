@@ -34,7 +34,7 @@ stratifyRules rs =
               internalEdges = foldr (isInternalEdge compNodes) mempty vs
           in HS.null $ HS.intersection internalEdges negatedEdges
 
-    stratumNumbers = foldr computeStratumNumbers mempty comps
+    stratumNumbers = foldr (computeStratumNumbers negatedEdges) mempty comps
 
 isInternalEdge :: HashSet Relation -> Context -> HashSet (Relation, Relation) -> HashSet (Relation, Relation)
 isInternalEdge compNodes (_, n, tgts) acc =
@@ -61,25 +61,34 @@ assignRule stratumNumbers r = IM.insertWith (++) snum [r]
 -- re-evaluated until a fixed-point is reached).  This makes the
 -- stratum number computation easy - just take the maximum over all of
 -- the rules in the SCC.
-computeStratumNumber :: HashMap Relation Int -> Context -> Int
-computeStratumNumber m (_, _, deps) =
+computeStratumNumber :: NegatedEdges -> HashMap Relation Int -> Context -> Int
+computeStratumNumber negEdges m (_, r, deps) =
   case deps of
     [] -> 0
     -- deps is not empty; if a dependency is not present it must be in
     -- this SCC and we can count it as zero because there are no
     -- intervening negations.
-    deps' -> maximum $ map (\r -> HM.lookupDefault 0 r m) deps'
+    deps' -> maximum $ map toStratNum deps'
+  where
+    toStratNum d =
+      case HS.member (r, d) negEdges of
+        True -> 1 + HM.lookupDefault 0 d m
+        False -> HM.lookupDefault 0 d m
+
 
 -- | Assign a stratum number to each SCC.  The stratum number is the
 -- maximum number of negations reachable from a relation without
 -- encountering a negation (negations within an SCC are impossible).
-computeStratumNumbers :: SCC Context -> HashMap Relation Int -> HashMap Relation Int
-computeStratumNumbers comp m =
+computeStratumNumbers :: NegatedEdges
+                         -> SCC Context
+                         -> HashMap Relation Int
+                         -> HashMap Relation Int
+computeStratumNumbers negEdges comp m =
   case comp of
-    AcyclicSCC c@(r, _, _) -> HM.insert r (computeStratumNumber m c) m
+    AcyclicSCC c@(r, _, _) -> HM.insert r (computeStratumNumber negEdges m c) m
     CyclicSCC cs ->
       -- The SCC can't be empty so maximum won't see an empty list
-      let sn = maximum $ map (computeStratumNumber m) cs
+      let sn = maximum $ map (computeStratumNumber negEdges m) cs
       in foldr (\(r,_,_) acc -> HM.insert r sn acc) m cs
 
 type NegatedEdges = HashSet (Relation, Relation)
