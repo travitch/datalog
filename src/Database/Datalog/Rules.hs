@@ -58,9 +58,6 @@ import Text.Printf
 import Database.Datalog.Errors
 import Database.Datalog.Database
 
-import Debug.Trace
-debug = flip trace
-
 data QueryState a = QueryState { intensionalDatabase :: Database a
                                , queryRules :: [(Clause a, [Literal Clause a])]
                                }
@@ -318,9 +315,7 @@ joinLiteralWith :: AdornedClause a
                    -> [Bindings s a]
                    -> (Bindings s a -> PartialTuple a -> ST s [Bindings s a])
                    -> ST s [Bindings s a]
-joinLiteralWith c bs f = do
-  r <- concatMapM (apply c f) bs
-  return r `debug` printf "> %d input bindings -> %d output bindings\n" (length bs) (length r)
+joinLiteralWith c bs f = concatMapM (apply c f) bs
   where
     apply cl fn b = do
       pt <- buildPartialTuple cl b
@@ -368,9 +363,9 @@ applyJoinCondition p vs m acc b@(Bindings binds) = do
 -- tuples).
 normalJoin :: (Eq a, Hashable a) => Database a -> AdornedClause a -> Bindings s a
               -> PartialTuple a -> ST s [Bindings s a]
-normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) ts `debug` printf "Join adding %d tuples\n" (length ts)
+normalJoin db c binds pt = mapM (projectTupleOntoLiteral c binds) ts
   where
-    ts = select db (adornedClauseRelation c) pt `debug` (" Attempting a select with pt: " ++ show pt)
+    ts = select db (adornedClauseRelation c) pt
 
 -- | Retain the input binding if there are no matches in the database
 -- for the input PartialTuple.  Otherwise reject it.
@@ -517,7 +512,7 @@ applyRule :: (Failure DatalogError m, Eq a, Hashable a)
              => Database a -> Rule a -> m (Database a)
 applyRule db r = return $ runST $ do
   v0 <- V.new (HM.size m)
-  bs <- foldM (joinLiteral db) [Bindings v0] b `debug` printf "Applying %d clauses in the rule body\n" (length b)
+  bs <- foldM (joinLiteral db) [Bindings v0] b
   projectLiteral db h m bs
   where
     h = ruleHead r
