@@ -43,9 +43,8 @@ import Control.Monad.ST.Strict
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
-import Data.List ( intercalate, foldl' )
+import Data.List ( intercalate )
 import Data.Maybe ( fromMaybe, mapMaybe )
 import Data.Monoid
 import Data.Text ( Text )
