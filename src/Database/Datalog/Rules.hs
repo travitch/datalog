@@ -311,9 +311,7 @@ select db p = scanSpace filter db p
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
 anyMatch :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> Bool
-anyMatch = scanSpace f
-  where
-    f test = foldl' (\ !acc t -> acc || test t) False
+anyMatch = scanSpace any
 
 {-# INLINE joinLiteralWith #-}
 -- | The common worker for the non-conditional clause join functions.
