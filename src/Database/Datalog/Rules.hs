@@ -251,17 +251,20 @@ queryToPartialTuple (Query c) =
 -- or is an atom.  Otherwise, leave it as free (not mentioned in the
 -- partial tuple).
 buildPartialTuple :: AdornedClause a -> Bindings s a -> ST s (PartialTuple a)
-buildPartialTuple c binds =
-  PartialTuple . reverse <$> foldM (takeBoundOrAtom binds) [] indexedClauses
+buildPartialTuple c (Bindings bs) =
+  PartialTuple <$> go 0 (adornedClauseTerms c)
   where
-    indexedClauses = zip [0..] (adornedClauseTerms c)
-    takeBoundOrAtom (Bindings bs) acc (ix, ta) =
+    go _ [] = return []
+    go !ix (ta:rest) =
       case ta of
-        (Atom a, BoundAtom) -> return $ (ix, a) : acc
+        (Atom a, BoundAtom) -> do
+          r <- go (ix+1) rest
+          return $! (ix, a) : r
         (_, Bound slot) -> do
+          r <- go (ix+1) rest
           b <- V.read bs slot
-          return $ (ix, b) : acc
-        _ -> return acc
+          return $! (ix, b) : r
+        _ -> go (ix+1) rest
 
 -- | Determine if a PartialTuple and a concrete Tuple from the
 -- database match.  Walks the partial tuple (which is sorted by index)
@@ -273,9 +276,9 @@ tupleMatches (PartialTuple pvs) (Tuple vs) =
 
 parallelTupleWalk :: (Eq a) => Int -> [(Int, a)] -> [a] -> Bool
 parallelTupleWalk _ [] _ = True
-parallelTupleWalk !ix cpvs@((pix, pv):prest) (v:rest)
-  | ix /= pix = parallelTupleWalk (ix+1) cpvs rest
-  | v == pv = parallelTupleWalk (ix+1) prest rest
+parallelTupleWalk !ix cpvs@(p:prest) (v:rest)
+  | ix /= fst p = parallelTupleWalk (ix+1) cpvs rest
+  | v == snd p = parallelTupleWalk (ix+1) prest rest
   | otherwise = False
 parallelTupleWalk _ _ [] = error "Tuple emptied before partial tuple"
 
