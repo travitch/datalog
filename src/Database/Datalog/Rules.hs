@@ -273,10 +273,10 @@ tupleMatches (PartialTuple pvs) (Tuple vs) =
 
 parallelTupleWalk :: (Eq a) => Int -> [(Int, a)] -> [a] -> Bool
 parallelTupleWalk _ [] _ = True
-parallelTupleWalk !ix cpvs@((pix, pv):prest) (v:rest) =
-  case ix == pix of
-    False -> parallelTupleWalk (ix+1) cpvs rest
-    True -> (v == pv) && parallelTupleWalk (ix+1) prest rest
+parallelTupleWalk !ix cpvs@((pix, pv):prest) (v:rest)
+  | ix /= pix = parallelTupleWalk (ix+1) cpvs rest
+  | v == pv = parallelTupleWalk (ix+1) prest rest
+  | otherwise = False
 parallelTupleWalk _ _ [] = error "Tuple emptied before partial tuple"
 
 {-# INLINE scanSpace #-}
