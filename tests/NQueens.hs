@@ -16,6 +16,7 @@ main = defaultMain tests
 tests :: [Test]
 tests = [ testGroup "t1" [ testCase "4queens" t4
                          , testCase "5queens" t5
+                         , testCase "6queens" t6
                          ] ]
 
 type Position = (Int, Int)
@@ -66,12 +67,12 @@ t4 = do
       queens <- inferencePredicate "queens"
       (queens, [p1, p2, p3, p4]) |- [ lit position [p1]
                                     , lit position [p2]
-                                    , lit position [p3]
-                                    , lit position [p4]
                                     , negLit canAttack [p1, p2]
+                                    , lit position [p3]
                                     , negLit canAttack [p1, p3]
-                                    , negLit canAttack [p1, p4]
                                     , negLit canAttack [p2, p3]
+                                    , lit position [p4]
+                                    , negLit canAttack [p1, p4]
                                     , negLit canAttack [p2, p4]
                                     , negLit canAttack [p3, p4]
                                     ]
@@ -102,18 +103,66 @@ t5 = do
       queens <- inferencePredicate "queens"
       (queens, [p1, p2, p3, p4, p5]) |- [ lit position [p1]
                                         , lit position [p2]
-                                        , lit position [p3]
-                                        , lit position [p4]
-                                        , lit position [p5]
                                         , negLit canAttack [p1, p2]
+                                        , lit position [p3]
                                         , negLit canAttack [p1, p3]
-                                        , negLit canAttack [p1, p4]
-                                        , negLit canAttack [p1, p5]
                                         , negLit canAttack [p2, p3]
+                                        , lit position [p4]
+                                        , negLit canAttack [p1, p4]
                                         , negLit canAttack [p2, p4]
-                                        , negLit canAttack [p2, p5]
                                         , negLit canAttack [p3, p4]
+                                        , lit position [p5]
+                                        , negLit canAttack [p1, p5]
+                                        , negLit canAttack [p2, p5]
                                         , negLit canAttack [p3, p5]
                                         , negLit canAttack [p4, p5]
                                         ]
       issueQuery queens [p1, p2, p3, p4, p5]
+
+t6 :: Assertion
+t6 = do
+  db6 <- dbN 6
+  res <- queryDatabase db6 q
+  let res' = unique $ map sort res
+  print res'
+  assertBool "t6" $ all noneCanAttack res' && length res' == 4
+  where
+    q = do
+      position <- relationPredicateFromName "position"
+      canAttack <- inferencePredicate "canAttack"
+      let x = LogicVar "X"
+          y = LogicVar "Y"
+      (canAttack, [x, y]) |- [ lit position [x]
+                             , lit position [y]
+                             , cond2 posCanAttack (x, y)
+                             ]
+      let p1 = LogicVar "P1"
+          p2 = LogicVar "P2"
+          p3 = LogicVar "P3"
+          p4 = LogicVar "P4"
+          p5 = LogicVar "P5"
+          p6 = LogicVar "P6"
+      queens <- inferencePredicate "queens"
+      (queens, [p1, p2, p3, p4, p5, p6]) |- [ lit position [p1]
+                                            , lit position [p2]
+                                            , negLit canAttack [p1, p2]
+                                            , lit position [p3]
+                                            , negLit canAttack [p1, p3]
+                                            , negLit canAttack [p2, p3]
+                                            , lit position [p4]
+                                            , negLit canAttack [p1, p4]
+                                            , negLit canAttack [p2, p4]
+                                            , negLit canAttack [p3, p4]
+                                            , lit position [p5]
+                                            , negLit canAttack [p1, p5]
+                                            , negLit canAttack [p2, p5]
+                                            , negLit canAttack [p3, p5]
+                                            , negLit canAttack [p4, p5]
+                                            , lit position [p6]
+                                            , negLit canAttack [p1, p6]
+                                            , negLit canAttack [p2, p6]
+                                            , negLit canAttack [p3, p6]
+                                            , negLit canAttack [p4, p6]
+                                            , negLit canAttack [p5, p6]
+                                            ]
+      issueQuery queens [p1, p2, p3, p4, p5, p6]
