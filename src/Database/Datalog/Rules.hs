@@ -45,7 +45,7 @@ import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
 import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
-import Data.List ( intercalate )
+import Data.List ( intercalate, foldl' )
 import Data.Maybe ( fromMaybe, mapMaybe )
 import Data.Monoid
 import Data.Text ( Text )
@@ -283,7 +283,7 @@ parallelTupleWalk _ _ [] = error "Tuple emptied before partial tuple"
 {-# INLINE scanSpace #-}
 -- | The common worker for 'select' and 'matchAny'
 scanSpace :: (Eq a, Hashable a)
-             => ((Tuple a -> Bool) -> HashSet (Tuple a) -> b)
+             => ((Tuple a -> Bool) -> [Tuple a] -> b)
              -> Database a
              -> Relation
              -> PartialTuple a
@@ -306,16 +306,14 @@ scanSpace f db p pt = f (tupleMatches pt) space
 -- | Return all of the tuples in the given relation that match the
 -- given PartialTuple
 select :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
-select db p = scanSpace f db p
-  where
-    f test = HS.foldr (\t acc -> if test t then t : acc else acc) []
+select db p = scanSpace filter db p
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
 anyMatch :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> Bool
 anyMatch = scanSpace f
   where
-    f test = HS.foldl' (\ !acc t -> acc || if test t then True else False) False
+    f test = foldl' (\ !acc t -> acc || test t) False
 
 {-# INLINE joinLiteralWith #-}
 -- | The common worker for the non-conditional clause join functions.

@@ -42,13 +42,17 @@ instance (Hashable a) => Hashable (Tuple a) where
 -- to the user.
 data DBRelation a = DBRelation { relationArity :: !Int
                                , relationName :: !Text
-                               , relationData :: !(HashSet (Tuple a))
+                               , relationData :: [Tuple a]
+                               , relationMembers :: !(HashSet (Tuple a))
                                , relationIndex :: !(HashMap (Int, a) (Tuple a))
                                }
                   deriving (Show)
 
 -- | A database is a collection of facts organized into relations
 newtype Database a = Database (HashMap Text (DBRelation a))
+
+instance (Show a) => Show (Database a) where
+  show (Database db) = show db
 
 -- | A wrapper to expose the relation name to callers without
 -- revealing details of its implementation
@@ -78,7 +82,7 @@ addRelation name arity = do
   case HM.lookup name m of
     Just _ -> lift $ failure (RelationExistsError name)
     Nothing -> do
-      let r = DBRelation arity name mempty mempty
+      let r = DBRelation arity name mempty mempty mempty
       put $! Database $! HM.insert name r m
       return $! Relation name
 
@@ -90,7 +94,7 @@ assertFact relHandle@(Relation t) tup = do
   db@(Database m) <- get
   let rel = databaseRelation db relHandle
   wrappedTuple <- toWrappedTuple rel tup
-  case HS.member wrappedTuple (relationData rel) of
+  case HS.member wrappedTuple (relationMembers rel) of
     True -> return ()
     False ->
       let rel' = addTupleToRelation rel wrappedTuple
@@ -110,12 +114,17 @@ replaceRelation (Database db) r =
 -- It has already been verified that the tuple does not exist in the
 -- relation (see 'addTuple') so no extra checks are required here.
 addTupleToRelation :: (Eq a, Hashable a) => DBRelation a -> Tuple a -> DBRelation a
-addTupleToRelation rel t@(Tuple elems) =
-  rel { relationData = HS.insert t (relationData rel)
-      , relationIndex = foldr updateIndex (relationIndex rel) (zip [0..] elems)
-      }
-  where
-    updateIndex ie = HM.insert ie t
+addTupleToRelation rel t =
+  case HS.member t (relationMembers rel) of
+    True -> rel
+    False -> rel { relationData = t : relationData rel
+                 , relationMembers = HS.insert t (relationMembers rel)
+                 }
+  -- rel { relationData = HS.insert t (relationData rel)
+  --     , relationIndex = foldr updateIndex (relationIndex rel) (zip [0..] elems)
+  --     }
+  -- where
+  --   updateIndex ie = HM.insert ie t
 
 -- | Get a relation by name.  If it does not exist in the database,
 -- return a new relation with the appropriate arity.
@@ -124,7 +133,7 @@ ensureDatabaseRelation :: (Eq a, Hashable a)
 ensureDatabaseRelation (Database m) (Relation t) arity =
   case HM.lookup t m of
     Just r -> r
-    Nothing -> DBRelation arity t mempty mempty
+    Nothing -> DBRelation arity t mempty mempty mempty
 
 -- | Get an existing relation from the database
 databaseRelation :: Database a -> Relation -> DBRelation a
@@ -143,7 +152,7 @@ databaseRelations (Database m) =
 
 -- | Get all of the tuples for the given predicate/relation in the database.
 dataForRelation :: (Failure DatalogError m)
-                        => Database a -> Relation -> m (HashSet (Tuple a))
+                        => Database a -> Relation -> m [Tuple a]
 dataForRelation (Database m) (Relation txt) =
   case HM.lookup txt m of
     Nothing -> failure $ NoRelationError txt
@@ -154,7 +163,7 @@ databasesDiffer (Database db1) (Database db2) =
   counts db1 /= counts db2
   where
     counts = fmap countData
-    countData (DBRelation _ _ s _) = HS.size s
+    countData (DBRelation _ _ _ s _) = HS.size s
 
 -- | Convert the user-level tuple to a safe length-checked Tuple.
 -- Signals failure (according to @m@) if the length is invalid.
