@@ -305,7 +305,7 @@ scanSpace f db p pt = f (tupleMatches pt) space
 -- | Return all of the tuples in the given relation that match the
 -- given PartialTuple
 select :: (Eq a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
-select db p = scanSpace filter db p
+select = scanSpace filter
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
