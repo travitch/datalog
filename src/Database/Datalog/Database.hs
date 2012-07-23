@@ -48,11 +48,18 @@ data DBRelation a = DBRelation { relationArity :: !Int
                                }
                   deriving (Show)
 
+instance (Eq a, Hashable a) => Eq (DBRelation a) where
+  (DBRelation arity1 n1 _ ms1 _) == (DBRelation arity2 n2 _ ms2 _) =
+    arity1 == arity2 && n1 == n2 && ms1 == ms2
+
 -- | A database is a collection of facts organized into relations
 newtype Database a = Database (HashMap Text (DBRelation a))
 
 instance (Show a) => Show (Database a) where
   show (Database db) = show db
+
+instance (Eq a, Hashable a) => Eq (Database a) where
+  (Database db1) == (Database db2) = db1 == db2
 
 -- | A wrapper to expose the relation name to callers without
 -- revealing details of its implementation
