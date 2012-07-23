@@ -281,7 +281,7 @@ parallelTupleWalk _ _ [] = error "Tuple emptied before partial tuple"
 
 {-# INLINE scanSpace #-}
 -- | The common worker for 'select' and 'matchAny'
-scanSpace :: (Eq a, Hashable a)
+scanSpace :: (Eq a)
              => ((Tuple a -> Bool) -> [Tuple a] -> b)
              -> Database a
              -> Relation
@@ -304,12 +304,12 @@ scanSpace f db p pt = f (tupleMatches pt) space
 
 -- | Return all of the tuples in the given relation that match the
 -- given PartialTuple
-select :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
+select :: (Eq a) => Database a -> Relation -> PartialTuple a -> [Tuple a]
 select db p = scanSpace filter db p
 
 -- | Return true if any tuples in the given relation match the given
 -- 'PartialTuple'
-anyMatch :: (Eq a, Hashable a) => Database a -> Relation -> PartialTuple a -> Bool
+anyMatch :: (Eq a) => Database a -> Relation -> PartialTuple a -> Bool
 anyMatch = scanSpace any
 
 {-# INLINE joinLiteralWith #-}
