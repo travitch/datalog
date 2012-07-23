@@ -198,7 +198,7 @@ q3 = do
                           , lit empJobStar [x, z]
                           ]
   (empJobStar, [x, y]) |- [ lit canDo [Anything, y]
-                          , lit employee [Anything, x, Atom (EP "Boss")]
+                          , lit employee [Anything, x, Atom (EP "Boss"), Anything]
                           ]
   (empJob, [x, y]) |- [ lit empJobStar [x, y]
                       , lit employee [jid, x, Anything, Anything]
