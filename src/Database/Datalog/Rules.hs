@@ -189,6 +189,9 @@ newtype Query a = Query { unQuery :: Clause a }
 infixr 0 |-
 
 -- | Assert a rule
+--
+-- FIXME: Check to make sure that clause arities match their declared
+-- schema.
 (|-), assertRule :: (Failure DatalogError m)
         => (Relation, [Term a]) -- ^ The rule head
         -> [Literal Clause a] -- ^ Body literals
@@ -230,41 +233,37 @@ newtype Bindings s a = Bindings (STVector s a)
 
 -- | A partial tuple records the atoms in a tuple (with their indices
 -- in the tuple).  These are primarily used in database queries.
-newtype PartialTuple a = PartialTuple [(Int, a)]
+newtype PartialTuple a = PartialTuple [Maybe a]
 
-instance Show (PartialTuple a) where
-  show (PartialTuple vs) = show $ map (show . fst) vs
+instance (Show a) => Show (PartialTuple a) where
+  show (PartialTuple vs) = show $ map show vs
 
 -- | Convert a 'Query' into a 'PartialTuple' that can be used in a
 -- 'select' of the IDB
 queryToPartialTuple :: Query a -> PartialTuple a
 queryToPartialTuple (Query c) =
-  PartialTuple $! foldr takeAtom [] (zip [0..] ts)
+  PartialTuple $! map takeAtom ts
   where
     ts = clauseTerms c
-    takeAtom (ix, t) acc =
+    takeAtom t =
       case t of
-        Atom a -> (ix, a) : acc
-        _ -> acc
+        Atom a -> Just a
+        _ -> Nothing
 
 -- | For each term in the clause, take it as a literal if it is bound
 -- or is an atom.  Otherwise, leave it as free (not mentioned in the
 -- partial tuple).
 buildPartialTuple :: AdornedClause a -> Bindings s a -> ST s (PartialTuple a)
 buildPartialTuple c (Bindings bs) =
-  PartialTuple <$> go 0 (adornedClauseTerms c)
+  PartialTuple <$> mapM toPartial (adornedClauseTerms c)
   where
-    go _ [] = return []
-    go !ix (ta:rest) =
+    toPartial ta =
       case ta of
-        (Atom a, BoundAtom) -> do
-          r <- go (ix+1) rest
-          return $! (ix, a) : r
+        (Atom a, BoundAtom) -> return $! Just a
         (_, Bound slot) -> do
-          r <- go (ix+1) rest
           b <- V.read bs slot
-          return $! (ix, b) : r
-        _ -> go (ix+1) rest
+          return $! Just b
+        _ -> return Nothing
 
 -- | Determine if a PartialTuple and a concrete Tuple from the
 -- database match.  Walks the partial tuple (which is sorted by index)
@@ -272,15 +271,15 @@ buildPartialTuple c (Bindings bs) =
 -- much as possible.
 tupleMatches :: (Eq a) => PartialTuple a -> Tuple a -> Bool
 tupleMatches (PartialTuple pvs) (Tuple vs) =
-  parallelTupleWalk 0 pvs vs
+  parallelTupleWalk pvs vs
 
-parallelTupleWalk :: (Eq a) => Int -> [(Int, a)] -> [a] -> Bool
-parallelTupleWalk _ [] _ = True
-parallelTupleWalk !ix cpvs@(p:prest) (v:rest)
-  | ix /= fst p = parallelTupleWalk (ix+1) cpvs rest
-  | v == snd p = parallelTupleWalk (ix+1) prest rest
-  | otherwise = False
-parallelTupleWalk _ _ [] = error "Tuple emptied before partial tuple"
+parallelTupleWalk :: (Eq a) => [Maybe a] -> [a] -> Bool
+parallelTupleWalk [] [] = True
+parallelTupleWalk (p:ps) (v:vs) =
+  case p of
+    Nothing -> parallelTupleWalk ps vs
+    Just pv -> pv == v && parallelTupleWalk ps vs
+parallelTupleWalk _ _ = error "Partial tuple length mismatch"
 
 {-# INLINE scanSpace #-}
 -- | The common worker for 'select' and 'matchAny'
