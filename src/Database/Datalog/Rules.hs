@@ -557,6 +557,18 @@ mapAccumM f z (x:xs) = do
   (z'', ys) <- mapAccumM f z' xs
   return (z'', return y `mplus` ys)
 
+{-# INLINE mapM' #-}
+-- | This is an alternative definition of mapM that accumulates its
+-- results on the heap instead of the stack.  This should avoid some
+-- stack overflows when processing some million+ element lists..
+mapM' :: (Monad m) => (a -> m b) -> [a] -> m [b]
+mapM' f = go []
+  where
+    go acc [] = return (reverse acc)
+    go acc (a:as) = do
+      x <- f a
+      go (x:acc) as
+
 {-# INLINE concatMapM #-}
 concatMapM :: (Monad m) => (a -> m [b]) -> [a] -> m [b]
-concatMapM f xs = liftM concat (mapM f xs)
+concatMapM f xs = liftM concat (mapM' f xs)
