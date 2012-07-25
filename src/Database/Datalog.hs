@@ -47,6 +47,9 @@ import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
 
+import Debug.Trace
+debug = flip trace
+
 -- | A fully-stratified query plan that is ready to be executed.
 data QueryPlan a = QueryPlan (Query a) [[Rule a]]
 
@@ -86,7 +89,7 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
   -- the query.  Those might actually affect the magic rules that are
   -- required...  This is the seed-rule and
   -- seed-predicate-for-insertion code in the clojure implementation
-  edb <- executePlan' strata idb
+  edb <- applyStrata strata idb
   let q' = bindQuery q bindings
       pt = queryToPartialTuple q'
       p = queryPredicate q'
@@ -94,23 +97,15 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
 
 -- Private helpers
 
--- | Execute the query plan until no new facts are added to the database
-executePlan' :: (Failure DatalogError m, Eq a, Hashable a, Show a)
-                => [[Rule a]] -> Database a -> m (Database a)
-executePlan' strata db = do
-  db' <- applyStrata strata db
-  case databasesDiffer db db' of
-    True -> executePlan' strata db'
-    False -> return db'
-
--- | Apply the rules in each stratum bottom-up.  Stop at a stratum if
--- nothing changes (since no new facts can be added in later stages if
--- nothing changed in a lower stage)
+-- | Apply the rules in each stratum bottom-up.  Compute a fixed-point
+-- for each stratum
 applyStrata :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                => [[Rule a]] -> Database a -> m (Database a)
 applyStrata [] db = return db
-applyStrata (s:strata) db = do
-  db' <- foldM applyRule db s
-  case databasesDiffer db db' of
-    True -> applyStrata strata db'
-    False -> return db
+applyStrata ss@(s:strata) db = do
+  -- Group the rules by their head relations.  The delta table has to
+  -- be managed for all of the related rules at once.
+  db' <- foldM applyRuleSet db (partitionRules s)
+  case databaseHasDelta db' of
+    True -> applyStrata ss db'
+    False -> applyStrata strata db'

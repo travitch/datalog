@@ -21,7 +21,7 @@ module Database.Datalog.Rules (
   inferencePredicate,
   ruleRelations,
   issueQuery,
-  applyRule,
+  applyRuleSet,
   runQuery,
   select,
   queryToPartialTuple,
@@ -33,18 +33,20 @@ module Database.Datalog.Rules (
   cond3,
   cond4,
   cond5,
-  bindQuery
+  bindQuery,
+  partitionRules
   ) where
 
 import Control.Applicative
 import Control.Failure
 import Control.Monad.State.Strict
 import Control.Monad.ST.Strict
+import Data.Function ( on )
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
-import Data.List ( intercalate )
+import Data.List ( intercalate, groupBy, sortBy )
 import Data.Maybe ( fromMaybe, mapMaybe )
 import Data.Monoid
 import Data.Text ( Text )
@@ -55,6 +57,9 @@ import Text.Printf
 
 import Database.Datalog.Errors
 import Database.Datalog.Database
+
+-- import Debug.Trace
+-- debug = flip trace
 
 data QueryState a = QueryState { intensionalDatabase :: Database a
                                , queryRules :: [(Clause a, [Literal Clause a])]
@@ -112,11 +117,14 @@ instance (Show a) => Show (Clause a) where
 data Adornment = Free !Int -- ^ The index to bind a free variable
                | BoundAtom
                | Bound !Int -- ^ The index to look for the binding of this variable
-               deriving (Show)
+               deriving (Eq, Show)
 
 data AdornedClause a = AdornedClause { adornedClauseRelation :: Relation
                                      , adornedClauseTerms :: [(Term a, Adornment)]
                                      }
+
+instance (Eq a) => Eq (AdornedClause a) where
+  (AdornedClause r1 cs1) == (AdornedClause r2 cs2) = r1 == r2 && cs1 == cs2
 
 instance (Show a) => Show (AdornedClause a) where
   show (AdornedClause p ats) =
@@ -131,6 +139,11 @@ data Literal ctype a = Literal (ctype a)
                      | NegatedLiteral (ctype a)
                      | ConditionalClause ([a] -> Bool) [Term a] (HashMap (Term a) Int)
 --                     | MagicLiteral (ctype a)
+
+instance (Eq a, Eq (ctype a)) => Eq (Literal ctype a) where
+  (Literal c1) == (Literal c2) = c1 == c2
+  (NegatedLiteral c1) == (NegatedLiteral c2) = c1 == c2
+  _ == _ = False
 
 lit :: Relation -> [Term a] -> Literal Clause a
 lit p ts = Literal $ Clause p ts
@@ -414,26 +427,6 @@ bindingsToTuple c vmap (Bindings bs) = do
         Nothing -> error "NonVariableInRuleHead"
         Just ix -> V.read bs ix
 
--- | Ensure that the relation named by the clause argument is in the
--- database.  Get the DBRelation.  Then fold over the Bindings,
--- constructing a tuple for each one (that is inserted into the
--- relation).  Then build a new database with that relation replaced
--- with the new one.
-projectLiteral :: (Eq a, Hashable a)
-                  => Database a
-                  -> AdornedClause a
-                  -> HashMap (Term a) Int
-                  -> [Bindings s a]
-                  -> ST s (Database a)
-projectLiteral db c vmap bs = do
-  let r = adornedClauseRelation c
-      rel = ensureDatabaseRelation db r (length (adornedClauseTerms c))
-  rel' <- foldM project rel bs
-  return $ replaceRelation db rel'
-  where
-    project !r b = do
-      t <- bindingsToTuple c vmap b
-      return $ addTupleToRelation r t
 
 literalClauseRelation :: Literal AdornedClause a -> Maybe Relation
 literalClauseRelation bc =
@@ -512,17 +505,119 @@ runQuery qm idb = do
   return (q, rs')
 
 -- | A worker to apply a single rule to the database (producing a new
--- database).
-applyRule :: (Failure DatalogError m, Eq a, Hashable a)
-             => Database a -> Rule a -> m (Database a)
-applyRule db r = return $ runST $ do
-  v0 <- V.new (HM.size m)
-  bs <- foldM (joinLiteral db) [Bindings v0] b
-  projectLiteral db h m bs
+-- database).  To implement semi-naive evaluation, each step of the
+-- evaluation (that is, each iteration over a stratum) needs to record
+-- the *new* facts generated for each relation.  Recursive references
+-- in a rule body refer to the delta table.
+--
+-- > T(x,y) |- G(x,z), T(z,y).
+--
+-- becomes
+--
+-- > ΔT(x,y) |- G(x,z), ΔT(z,y).
+--
+-- After evaluating the rule,
+--
+-- > ΔT := ΔT - T
+-- > T := ΔT `union` T
+--
+-- To get rid of any redundantly-inferred tuples in ΔT and update the
+-- real T relation.  If ΔT is empty before the rule is applied, don't
+-- do anything since no tuples can be derived.
+applyRule :: (Eq a, Hashable a, Show a)
+             => Database a -> Rule a -> ST s [Bindings s a]
+applyRule db r = do
+  -- We need to substitute the ΔT table in for *one* occurrence of the
+  -- T relation in the rule body at a time.  It must be substituted in at
+  -- *each* position where T appears.
+  case any (referencesRelation hr) b of
+    -- If the relation does not appear in the body at all, we don't
+    -- need to do the delta substitution.
+    False -> do
+      v0 <- V.new (HM.size m)
+      foldM (joinLiteral db) [Bindings v0] b
+    -- Otherwise, perform a swap/join for each instance of the
+    -- relation in the body.
+    True -> concat <$> foldM (joinWithDeltaAt db hr b m) [] b
   where
     h = ruleHead r
+    hr = adornedClauseRelation h
     b = ruleBody r
     m = ruleVariableMap r
+
+referencesRelation:: Relation -> Literal AdornedClause a -> Bool
+referencesRelation hrel rel =
+  case rel of
+    Literal l -> adornedClauseRelation l == hrel
+    NegatedLiteral l -> adornedClauseRelation l == hrel
+    _ -> False
+
+joinWithDeltaAt :: (Eq a, Hashable a)
+                   => Database a
+                   -> Relation
+                   -> [Literal AdornedClause a]
+                   -> HashMap k v
+                   -> [[Bindings s a]]
+                   -> Literal AdornedClause a
+                   -> ST s [[Bindings s a]]
+joinWithDeltaAt db hr b m acc c =
+  case referencesRelation hr c of
+    False -> return acc
+    True -> do
+      v0 <- V.new (HM.size m)
+      bs <- foldM swapJoin [Bindings v0] b
+      return (bs : acc)
+  where
+    swapJoin bs thisClause =
+      case thisClause == c of
+        False -> joinLiteral db bs thisClause
+        True -> withDeltaRelation db hr $ \db' -> joinLiteral db' bs thisClause
+
+-- | Apply a set of rules.  All of the rules must have the same head
+-- relation.
+applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
+                => Database a -> [Rule a] -> m (Database a)
+applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
+applyRuleSet db rs@(r:_) = return $ runST $ do
+  bss <- mapM (applyRule db) rs
+  -- Each of the lists of generated bindings has its own
+  -- ruleVariableMap, so zip them together so that project has them
+  -- paired up and ready to use
+  let bssMaps = zip (map ruleVariableMap rs) bss
+  projectLiterals db h bssMaps
+  where
+    h = ruleHead r
+
+-- | Ensure that the relation named by the clause argument is in the
+-- database.  Get the DBRelation.  Then fold over the Bindings,
+-- constructing a tuple for each one (that is inserted into the
+-- relation).  Then build a new database with that relation replaced
+-- with the new one.
+projectLiterals :: (Eq a, Hashable a, Show a)
+                   => Database a
+                   -> AdornedClause a
+                   -> [(HashMap (Term a) Int, [Bindings s a])]
+                   -> ST s (Database a)
+projectLiterals db c bssMaps = do
+  let r = adornedClauseRelation c
+      rel = ensureDatabaseRelation db r (length (adornedClauseTerms c))
+      rel' = resetRelationDelta rel
+  -- We reset the delta since we are computing the new delta for the
+  -- next iteration.  The act of adding tuples to the relation
+  -- automatically computes the delta.
+  rel'' <- foldM (\irel (vmap, bs) -> foldM (project vmap) irel bs) rel' bssMaps
+  return $ replaceRelation db rel''
+  where
+    project vmap !r b = do
+      t <- bindingsToTuple c vmap b
+      return $ addTupleToRelation r t
+
+
+partitionRules :: [Rule a] -> [[Rule a]]
+partitionRules = groupBy gcmp . sortBy scmp
+  where
+    scmp = compare `on` (adornedClauseRelation . ruleHead)
+    gcmp = (==) `on` (adornedClauseRelation . ruleHead)
 
 queryPredicate :: Query a -> Relation
 queryPredicate = clauseRelation . unQuery

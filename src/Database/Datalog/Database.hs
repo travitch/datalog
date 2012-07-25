@@ -10,11 +10,13 @@ module Database.Datalog.Database (
   assertFact,
   databaseRelations,
   databaseRelation,
-  databasesDiffer,
   dataForRelation,
   addTupleToRelation,
   replaceRelation,
-  ensureDatabaseRelation
+  ensureDatabaseRelation,
+  resetRelationDelta,
+  withDeltaRelation,
+  databaseHasDelta
   ) where
 
 import Control.Failure
@@ -28,6 +30,9 @@ import Data.Monoid
 import Data.Text ( Text )
 
 import Database.Datalog.Errors
+
+import Debug.Trace
+debug = flip trace
 
 -- | A wrapper around lists that lets us more easily hide length
 -- checks
@@ -44,12 +49,13 @@ data DBRelation a = DBRelation { relationArity :: !Int
                                , relationName :: !Text
                                , relationData :: [Tuple a]
                                , relationMembers :: !(HashSet (Tuple a))
+                               , relationDelta :: [Tuple a]
                                , relationIndex :: !(HashMap (Int, a) (Tuple a))
                                }
                   deriving (Show)
 
 instance (Eq a, Hashable a) => Eq (DBRelation a) where
-  (DBRelation arity1 n1 _ ms1 _) == (DBRelation arity2 n2 _ ms2 _) =
+  (DBRelation arity1 n1 _ ms1 _ _) == (DBRelation arity2 n2 _ ms2 _ _) =
     arity1 == arity2 && n1 == n2 && ms1 == ms2
 
 -- | A database is a collection of facts organized into relations
@@ -89,7 +95,7 @@ addRelation name arity = do
   case HM.lookup name m of
     Just _ -> lift $ failure (RelationExistsError name)
     Nothing -> do
-      let r = DBRelation arity name mempty mempty mempty
+      let r = DBRelation arity name mempty mempty mempty mempty
       put $! Database $! HM.insert name r m
       return $! Relation name
 
@@ -104,7 +110,7 @@ assertFact relHandle@(Relation t) tup = do
   case HS.member wrappedTuple (relationMembers rel) of
     True -> return ()
     False ->
-      let rel' = addTupleToRelation rel wrappedTuple
+      let rel' = addTupleToRelation' rel wrappedTuple
       in put $! Database $ HM.insert t rel' m
 
 -- | Replace a relation in the database.  The old relation is
@@ -114,24 +120,43 @@ replaceRelation :: Database a -> DBRelation a -> Database a
 replaceRelation (Database db) r =
   Database $ HM.insert (relationName r) r db
 
+-- | Add a tuple to the relation without updating the delta table.
+-- This is needed for the initial database construction.
+addTupleToRelation' :: (Eq a, Hashable a) => DBRelation a -> Tuple a -> DBRelation a
+addTupleToRelation' rel t =
+  case HS.member t (relationMembers rel) of
+    True -> rel
+    False -> rel { relationData = t : relationData rel
+                 , relationMembers = HS.insert t (relationMembers rel)
+                 }
+
 -- | Add the given tuple to the given 'Relation'.  It updates the
 -- index in the process.  The 'Tuple' is already validated so this is
 -- a total function.
 --
 -- It has already been verified that the tuple does not exist in the
 -- relation (see 'addTuple') so no extra checks are required here.
-addTupleToRelation :: (Eq a, Hashable a) => DBRelation a -> Tuple a -> DBRelation a
+addTupleToRelation :: (Eq a, Hashable a, Show a) => DBRelation a -> Tuple a -> DBRelation a
 addTupleToRelation rel t =
   case HS.member t (relationMembers rel) of
     True -> rel
     False -> rel { relationData = t : relationData rel
                  , relationMembers = HS.insert t (relationMembers rel)
+                 , relationDelta = t : relationDelta rel
                  }
-  -- rel { relationData = HS.insert t (relationData rel)
-  --     , relationIndex = foldr updateIndex (relationIndex rel) (zip [0..] elems)
-  --     }
-  -- where
-  --   updateIndex ie = HM.insert ie t
+
+-- | If the requested relation is not in the database, just use the
+-- original database (the result is the same - an empty relation)
+withDeltaRelation :: Database a -> Relation -> (Database a -> b) -> b
+withDeltaRelation d@(Database db) (Relation r) action =
+  action $ case HM.lookup r db of
+    Nothing -> d
+    Just dbrel ->
+      let rel' = dbrel { relationData = relationDelta dbrel }
+      in Database $ HM.insert r rel' db
+
+resetRelationDelta :: DBRelation a -> DBRelation a
+resetRelationDelta rel = rel { relationDelta = mempty }
 
 -- | Get a relation by name.  If it does not exist in the database,
 -- return a new relation with the appropriate arity.
@@ -140,7 +165,7 @@ ensureDatabaseRelation :: (Eq a, Hashable a)
 ensureDatabaseRelation (Database m) (Relation t) arity =
   case HM.lookup t m of
     Just r -> r
-    Nothing -> DBRelation arity t mempty mempty mempty
+    Nothing -> DBRelation arity t mempty mempty mempty mempty
 
 -- | Get an existing relation from the database
 databaseRelation :: Database a -> Relation -> DBRelation a
@@ -165,12 +190,11 @@ dataForRelation (Database m) (Relation txt) =
     Nothing -> failure $ NoRelationError txt
     Just r -> return $ relationData r
 
-databasesDiffer :: Database a -> Database a -> Bool
-databasesDiffer (Database db1) (Database db2) =
-  counts db1 /= counts db2
+databaseHasDelta :: Database a -> Bool
+databaseHasDelta (Database db) =
+  any (not . null . relationDelta) (HM.elems db) `debug` show (map toDbg (HM.elems db))
   where
-    counts = fmap countData
-    countData (DBRelation _ _ _ s _) = HS.size s
+    toDbg r = show (relationName r) ++ ": " ++ show (not (null (relationDelta r)))
 
 -- | Convert the user-level tuple to a safe length-checked Tuple.
 -- Signals failure (according to @m@) if the length is invalid.
