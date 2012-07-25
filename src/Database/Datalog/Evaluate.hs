@@ -31,11 +31,38 @@ import Database.Datalog.Rules
 -- Bindings vector.  When a bound variable is encountered, its current
 -- value is looked up from the Bindings.  If that value does not match
 -- the concrete tuple being examined, that tuple is rejected.
+--
+-- The mapping of variable to index into the bindings vector is stored
+-- in the Rule data structure.
 newtype Bindings s a = Bindings (STVector s a)
 
 
 -- | Apply a set of rules.  All of the rules must have the same head
--- relation.
+-- relation.  This is what implements the semi-naive evaluation
+-- strategy.  For each rule of the form
+--
+-- > T(x,y) |- G(x,z), T(z,y).
+--
+-- simulate the rule
+--
+-- > ΔT(x,y) |- G(x,z), ΔT(z,y).
+--
+-- That is, at each step only look at the *new* tuples for each
+-- recursive relation.  The intuition is that, if a new tuple is to be
+-- generated on the next step, it must reference a new tuple from this
+-- step (otherwise it would have already been generated) If a relation
+-- appears twice in a body:
+--
+-- > T(x,y) |- T(x,z), T(z,y).
+--
+-- we have to substitute ΔT once for *each* occurrence of T in the
+-- body, with the other occurrences referencing the non-Δ table:
+--
+-- > ΔT(x,y) |- ΔT(x,z), T(z,y).
+-- > ΔT(x,y) |- T(x,z), ΔT(z,y).
+--
+-- While collecting all of the new tuples (see projectLiteral), a new
+-- Δ table is generated.
 applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 => Database a -> [Rule a] -> m (Database a)
 applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
@@ -50,25 +77,9 @@ applyRuleSet db rs@(r:_) = return $ runST $ do
     h = ruleHead r
 
 -- | A worker to apply a single rule to the database (producing a new
--- database).  To implement semi-naive evaluation, each step of the
--- evaluation (that is, each iteration over a stratum) needs to record
--- the *new* facts generated for each relation.  Recursive references
--- in a rule body refer to the delta table.
---
--- > T(x,y) |- G(x,z), T(z,y).
---
--- becomes
---
--- > ΔT(x,y) |- G(x,z), ΔT(z,y).
---
--- After evaluating the rule,
---
--- > ΔT := ΔT - T
--- > T := ΔT `union` T
---
--- To get rid of any redundantly-inferred tuples in ΔT and update the
--- real T relation.  If ΔT is empty before the rule is applied, don't
--- do anything since no tuples can be derived.
+-- database).  This handles deciding if we need to do any Δ-table
+-- substitutions.  If not, it just does a simple fold with
+-- joinLiteral.
 applyRule :: (Eq a, Hashable a, Show a)
              => Database a -> Rule a -> ST s [Bindings s a]
 applyRule db r = do
@@ -81,8 +92,8 @@ applyRule db r = do
     False -> do
       v0 <- V.new (HM.size m)
       foldM (joinLiteral db) [Bindings v0] b
-    -- Otherwise, perform a swap/join for each instance of the
-    -- relation in the body.
+    -- Otherwise, swap the delta table in for each each occurrence of
+    -- the relation in the body.
     True -> concat <$> foldM (joinWithDeltaAt db hr b m) [] b
   where
     h = ruleHead r
@@ -90,6 +101,7 @@ applyRule db r = do
     b = ruleBody r
     m = ruleVariableMap r
 
+-- | Return True if the given literal references the given Relation
 referencesRelation:: Relation -> Literal AdornedClause a -> Bool
 referencesRelation hrel rel =
   case rel of
@@ -97,6 +109,8 @@ referencesRelation hrel rel =
     NegatedLiteral l -> adornedClauseRelation l == hrel
     _ -> False
 
+-- | The worker that substitutes a Δ-table for each clause referencing
+-- the relation @hr@.
 joinWithDeltaAt :: (Eq a, Hashable a)
                    => Database a
                    -> Relation
@@ -107,7 +121,13 @@ joinWithDeltaAt :: (Eq a, Hashable a)
                    -> ST s [[Bindings s a]]
 joinWithDeltaAt db hr b m acc c =
   case referencesRelation hr c of
+    -- This clause doesn't reference the relation so don't do anything
     False -> return acc
+    -- This clause does reference it, so we need to evaluate the
+    -- entire rule here.  swapJoin handles substituting the Δ table
+    -- for the relation in this clause (see withDeltaRelation - it
+    -- makes a new database with the Δ swapped for the data of this
+    -- relation).
     True -> do
       v0 <- V.new (HM.size m)
       bs <- foldM swapJoin [Bindings v0] b
