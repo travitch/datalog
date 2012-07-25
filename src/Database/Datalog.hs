@@ -43,6 +43,7 @@ import Data.Text ( Text )
 
 import Database.Datalog.Database
 import Database.Datalog.Errors
+import Database.Datalog.Evaluate
 import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification

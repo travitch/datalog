@@ -19,9 +19,10 @@ library
   exposed-modules: Database.Datalog
   other-modules:   Database.Datalog.Database
                    Database.Datalog.Errors
+                   Database.Datalog.Evaluate
+                   Database.Datalog.MagicSets
                    Database.Datalog.Rules
                    Database.Datalog.Stratification
-                   Database.Datalog.MagicSets
   build-depends: base > 3 && < 5, containers, unordered-containers, hashable,
                  failure, text, mtl, vector
   hs-source-dirs: src
