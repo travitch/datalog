@@ -5,9 +5,11 @@ import Control.Exception
 import Data.Text ( Text )
 import Data.Typeable
 
-data DatalogError = SchemaError Text
+import Database.Datalog.Relation
+
+data DatalogError = SchemaError Relation
                   | RelationExistsError Text
-                  | NoRelationError Text
+                  | NoRelationError Relation
                   | MissingQueryError
                   | ExtraQueryError
                   | StratificationError

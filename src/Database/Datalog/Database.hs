@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable, FlexibleContexts #-}
 module Database.Datalog.Database (
-  Relation(..),
+  Relation,
   Database,
   DatabaseBuilder,
   Tuple(..),
@@ -30,6 +30,7 @@ import Data.Monoid
 import Data.Text ( Text )
 
 import Database.Datalog.Errors
+import Database.Datalog.Relation
 
 import Debug.Trace
 debug = flip trace
@@ -46,7 +47,7 @@ instance (Hashable a) => Hashable (Tuple a) where
 -- user-defined type.  This is only used internally and is not exposed
 -- to the user.
 data DBRelation a = DBRelation { relationArity :: !Int
-                               , relationName :: !Text
+                               , relationName :: !Relation
                                , relationData :: [Tuple a]
                                , relationMembers :: !(HashSet (Tuple a))
                                , relationDelta :: [Tuple a]
@@ -59,21 +60,13 @@ instance (Eq a, Hashable a) => Eq (DBRelation a) where
     arity1 == arity2 && n1 == n2 && ms1 == ms2
 
 -- | A database is a collection of facts organized into relations
-newtype Database a = Database (HashMap Text (DBRelation a))
+newtype Database a = Database (HashMap Relation (DBRelation a))
 
 instance (Show a) => Show (Database a) where
   show (Database db) = show db
 
 instance (Eq a, Hashable a) => Eq (Database a) where
   (Database db1) == (Database db2) = db1 == db2
-
--- | A wrapper to expose the relation name to callers without
--- revealing details of its implementation
-newtype Relation = Relation Text
-                 deriving (Eq, Ord, Show)
-
-instance Hashable Relation where
-  hash (Relation t) = hash t
 
 -- | The monad in which databases are constructed and initial facts
 -- are asserted
@@ -92,18 +85,20 @@ addRelation :: (Failure DatalogError m, Eq a, Hashable a)
                => Text -> Int -> DatabaseBuilder m a Relation
 addRelation name arity = do
   Database m <- get
-  case HM.lookup name m of
+  case HM.lookup rel m of
     Just _ -> lift $ failure (RelationExistsError name)
     Nothing -> do
-      let r = DBRelation arity name mempty mempty mempty mempty
-      put $! Database $! HM.insert name r m
-      return $! Relation name
+      let r = DBRelation arity rel mempty mempty mempty mempty
+      put $! Database $! HM.insert rel r m
+      return rel
+  where
+    rel = Relation name
 
 -- | Add a tuple to the named 'Relation' in the database.  If the
 -- tuple is already present, the original 'Database' is unchanged.
 assertFact :: (Failure DatalogError m, Eq a, Hashable a)
             => Relation -> [a] -> DatabaseBuilder m a ()
-assertFact relHandle@(Relation t) tup = do
+assertFact relHandle tup = do
   db@(Database m) <- get
   let rel = databaseRelation db relHandle
   wrappedTuple <- toWrappedTuple rel tup
@@ -111,7 +106,7 @@ assertFact relHandle@(Relation t) tup = do
     True -> return ()
     False ->
       let rel' = addTupleToRelation' rel wrappedTuple
-      in put $! Database $ HM.insert t rel' m
+      in put $! Database $ HM.insert relHandle rel' m
 
 -- | Replace a relation in the database.  The old relation is
 -- discarded completely, so be sure to initialize the replacement with
@@ -148,7 +143,7 @@ addTupleToRelation rel t =
 -- | If the requested relation is not in the database, just use the
 -- original database (the result is the same - an empty relation)
 withDeltaRelation :: Database a -> Relation -> (Database a -> b) -> b
-withDeltaRelation d@(Database db) (Relation r) action =
+withDeltaRelation d@(Database db) r action =
   action $ case HM.lookup r db of
     Nothing -> d
     Just dbrel ->
@@ -162,32 +157,31 @@ resetRelationDelta rel = rel { relationDelta = mempty }
 -- return a new relation with the appropriate arity.
 ensureDatabaseRelation :: (Eq a, Hashable a)
                           => Database a -> Relation -> Int -> DBRelation a
-ensureDatabaseRelation (Database m) (Relation t) arity =
-  case HM.lookup t m of
+ensureDatabaseRelation (Database m) rel arity =
+  case HM.lookup rel m of
     Just r -> r
-    Nothing -> DBRelation arity t mempty mempty mempty mempty
+    Nothing -> DBRelation arity rel mempty mempty mempty mempty
 
 -- | Get an existing relation from the database
 databaseRelation :: Database a -> Relation -> DBRelation a
-databaseRelation (Database m) (Relation t) =
-  case HM.lookup t m of
+databaseRelation (Database m) rel =
+  case HM.lookup rel m of
     -- This really shouldn't be possible - it would be an error in the
     -- API since users can't create them and they can only be obtained
     -- in the same monad with the Database
-    Nothing -> error ("Invalid RelationHandle: " ++ show t)
+    Nothing -> error ("Invalid RelationHandle: " ++ show rel)
     Just r -> r
 
 -- | Get all of the predicates referenced in the database
 databaseRelations :: Database a -> [Relation]
-databaseRelations (Database m) =
-  map Relation (HM.keys m)
+databaseRelations (Database m) = HM.keys m
 
 -- | Get all of the tuples for the given predicate/relation in the database.
 dataForRelation :: (Failure DatalogError m)
                         => Database a -> Relation -> m [Tuple a]
-dataForRelation (Database m) (Relation txt) =
-  case HM.lookup txt m of
-    Nothing -> failure $ NoRelationError txt
+dataForRelation (Database m) rel =
+  case HM.lookup rel m of
+    Nothing -> failure $ NoRelationError rel
     Just r -> return $ relationData r
 
 databaseHasDelta :: Database a -> Bool

@@ -49,6 +49,7 @@ import Data.Text ( Text )
 import qualified Data.Text as T
 import Text.Printf
 
+import Database.Datalog.Relation
 import Database.Datalog.Errors
 import Database.Datalog.Database
 
@@ -221,7 +222,7 @@ relationPredicateFromName :: (Failure DatalogError m)
 relationPredicateFromName name = do
   idb <- gets intensionalDatabase
   case Relation name `elem` databaseRelations idb of
-    False -> lift $ failure (NoRelationError name)
+    False -> lift $ failure (NoRelationError (Relation name))
     True -> return $! Relation name
 
 -- | Create a new predicate that will be referenced by an EDB rule

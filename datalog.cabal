@@ -21,6 +21,7 @@ library
                    Database.Datalog.Errors
                    Database.Datalog.Evaluate
                    Database.Datalog.MagicSets
+                   Database.Datalog.Relation
                    Database.Datalog.Rules
                    Database.Datalog.Stratification
   build-depends: base > 3 && < 5, containers, unordered-containers, hashable,
