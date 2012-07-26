@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, ScopedTypeVariables #-}
 -- | This module defines the evaluation strategy of the library.
 --
 -- It currently uses a bottom-up semi-naive evaluator.
@@ -11,6 +11,7 @@ import Control.Applicative
 import Control.Failure
 import Control.Monad ( foldM, liftM )
 import Control.Monad.ST.Strict
+import Data.Graph
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
@@ -66,15 +67,52 @@ newtype Bindings s a = Bindings (STVector s a)
 applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 => Database a -> [Rule a] -> m (Database a)
 applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
-applyRuleSet db rs@(r:_) = return $ runST $ do
-  bss <- mapM (applyRule db) rs
-  -- Each of the lists of generated bindings has its own
-  -- ruleVariableMap, so zip them together so that project has them
-  -- paired up and ready to use
-  let bssMaps = zip (map ruleVariableMap rs) bss
-  projectLiterals db h bssMaps
+applyRuleSet db rss@(r:_) = return $ runST $ do
+  bss <- concat <$> mapM (applyRules db) (orderRules rss)
+  projectLiterals db h bss
   where
     h = ruleHead r
+
+-- | Each of the lists of generated bindings has its own
+-- ruleVariableMap, so zip them together so that project has them
+-- paired up and ready to use.
+--
+-- Apply a set of rules
+applyRules :: (Eq a, Hashable a, Show a)
+              => Database a
+              -> [Rule a]
+              -> ST s [(HashMap (Term a) Int, [Bindings s a])]
+applyRules db rs = do
+  bs <- mapM (applyRule db) rs
+  let bssMaps = zip (map ruleVariableMap rs) bs
+  return bssMaps
+
+-- | Toplogically sort rules (with SCCs treated as a unit).  This
+-- means that dependency rules will be fired before the rules that
+-- depend on them, which is the best evaluation order we can hope for.
+orderRules :: forall a . (Eq a, Hashable a) => [Rule a] -> [[Rule a]]
+orderRules rs = map toList (stronglyConnComp deps)
+  where
+    toList (AcyclicSCC r) = [r]
+    toList (CyclicSCC rss) = rss
+    toKeyM = HM.fromList (zip rs [0..])
+    toKey :: Rule a -> Int
+    toKey r = HM.lookupDefault (error "Missing toKeyM entry") r toKeyM
+
+    deps = foldr toContext [] rs
+    toContext r@(Rule _ b _) acc =
+      -- All of the rules for a given relation are in the same SCC
+      -- stratum, so we will see them all in @rs@
+      let brules = concatMap relationToRules b
+      in (r, toKey r, map toKey brules) : acc
+    relationToRules rel = filter (hasRelHead rel) rs
+    hasRelHead c (Rule h _ _) =
+      case c of
+        Literal ac -> adornedClauseRelation h == adornedClauseRelation ac
+        -- This should probably be impossible since negated terms
+        -- would be in a different stratum.
+        NegatedLiteral ac -> adornedClauseRelation h == adornedClauseRelation ac
+        _ -> False
 
 -- | A worker to apply a single rule to the database (producing a new
 -- database).  This handles deciding if we need to do any Δ-table

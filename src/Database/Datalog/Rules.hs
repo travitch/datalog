@@ -114,12 +114,20 @@ data Adornment = Free !Int -- ^ The index to bind a free variable
                | Bound !Int -- ^ The index to look for the binding of this variable
                deriving (Eq, Show)
 
+instance Hashable Adornment where
+  hash (Free i) = 1 `combine` hash i
+  hash BoundAtom = 7776
+  hash (Bound i) = 2 `combine` hash i
+
 data AdornedClause a = AdornedClause { adornedClauseRelation :: Relation
                                      , adornedClauseTerms :: [(Term a, Adornment)]
                                      }
 
 instance (Eq a) => Eq (AdornedClause a) where
   (AdornedClause r1 cs1) == (AdornedClause r2 cs2) = r1 == r2 && cs1 == cs2
+
+instance (Hashable a) => Hashable (AdornedClause a) where
+  hash (AdornedClause r ts) = hash r `combine` hash ts
 
 instance (Show a) => Show (AdornedClause a) where
   show (AdornedClause p ats) =
@@ -139,6 +147,11 @@ instance (Eq a, Eq (ctype a)) => Eq (Literal ctype a) where
   (Literal c1) == (Literal c2) = c1 == c2
   (NegatedLiteral c1) == (NegatedLiteral c2) = c1 == c2
   _ == _ = False
+
+instance (Hashable a, Hashable (ctype a)) => Hashable (Literal ctype a) where
+  hash (Literal c) = 1 `combine` hash c
+  hash (NegatedLiteral c) = 2 `combine` hash c
+  hash (ConditionalClause _ ts vm) = 3 `combine` hash ts `combine` hash (HM.size vm)
 
 lit :: Relation -> [Term a] -> Literal Clause a
 lit p ts = Literal $ Clause p ts
@@ -192,6 +205,13 @@ data Rule a = Rule { ruleHead :: AdornedClause a
 instance (Show a) => Show (Rule a) where
   show (Rule h b _) = printf "%s |- %s" (show h) (intercalate ", " (map show b))
 
+instance (Eq a) => Eq (Rule a) where
+  (Rule h1 b1 vms1) == (Rule h2 b2 vms2) =
+    h1 == h2 && b1 == b2 && vms1 == vms2
+
+instance (Hashable a) => Hashable (Rule a) where
+  hash (Rule h b vms) = hash h `combine` hash b `combine` hash (HM.size vms)
+
 newtype Query a = Query { unQuery :: Clause a }
 
 infixr 0 |-
@@ -220,10 +240,11 @@ assertRule (p, ts) b = do
 relationPredicateFromName :: (Failure DatalogError m)
                              => Text -> QueryBuilder m a Relation
 relationPredicateFromName name = do
+  let rel = Relation name
   idb <- gets intensionalDatabase
-  case Relation name `elem` databaseRelations idb of
-    False -> lift $ failure (NoRelationError (Relation name))
-    True -> return $! Relation name
+  case rel `elem` databaseRelations idb of
+    False -> lift $ failure (NoRelationError rel)
+    True -> return rel
 
 -- | Create a new predicate that will be referenced by an EDB rule
 inferencePredicate :: (Failure DatalogError m)
