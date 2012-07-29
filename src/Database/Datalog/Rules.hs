@@ -7,12 +7,12 @@
 -- Free variables.
 module Database.Datalog.Rules (
   Adornment(..),
-  Term(LogicVar, BindVar, Anything, Atom),
-  Clause,
+  Term(..),
+  Clause(..),
   AdornedClause(..),
   Rule(..),
   Literal(..),
-  Query,
+  Query(..),
   QueryBuilder,
   PartialTuple(..),
   (|-),
@@ -41,7 +41,6 @@ import Data.Function ( on )
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import qualified Data.HashSet as HS
 import Data.List ( intercalate, groupBy, sortBy )
 import Data.Maybe ( mapMaybe )
 import Data.Monoid
@@ -49,6 +48,7 @@ import Data.Text ( Text )
 import qualified Data.Text as T
 import Text.Printf
 
+import Database.Datalog.Adornment
 import Database.Datalog.Relation
 import Database.Datalog.Errors
 import Database.Datalog.Database
@@ -105,19 +105,13 @@ data Clause a = Clause { clauseRelation :: Relation
                        , clauseTerms :: [Term a]
                        }
 
+instance (Eq a) => Eq (Clause a) where
+  (Clause r1 ts1) == (Clause r2 ts2) = r1 == r2 && ts1 == ts2
+
 instance (Show a) => Show (Clause a) where
   show (Clause p ts) =
     printf "%s(%s)" (show p) (intercalate ", " (map show ts))
 
-data Adornment = Free !Int -- ^ The index to bind a free variable
-               | BoundAtom
-               | Bound !Int -- ^ The index to look for the binding of this variable
-               deriving (Eq, Show)
-
-instance Hashable Adornment where
-  hash (Free i) = 1 `combine` hash i
-  hash BoundAtom = 7776
-  hash (Bound i) = 2 `combine` hash i
 
 data AdornedClause a = AdornedClause { adornedClauseRelation :: Relation
                                      , adornedClauseTerms :: [(Term a, Adornment)]
@@ -226,10 +220,34 @@ infixr 0 |-
         -> QueryBuilder m a ()
 (|-) = assertRule
 assertRule (p, ts) b = do
+  -- FIXME: Assert that Anything does not appear in the head terms
+  -- (that is a range restriction violation).  Also check the range
+  -- restriction here.
   let h = Clause p ts
+      b' = fst $ foldr freshenVars ([], [0..]) b
   s <- get
-  put s { queryRules = (h, b) : queryRules s }
+  put s { queryRules = (h, b') : queryRules s }
 
+-- | Replace all instances of Anything with a FreshVar with a unique
+-- (to the rule) index.  This lets later evaluation stages ignore
+-- these and just deal with clean FreshVars.
+freshenVars :: Literal Clause a
+               -> ([Literal Clause a], [Int])
+               -> ([Literal Clause a], [Int])
+freshenVars l (cs, ixSrc) =
+  case l of
+    ConditionalClause _ _ _ -> (l : cs, ixSrc)
+    Literal (Clause h ts) ->
+      let (ts', ixRest) = foldr freshen ([], ixSrc) ts
+      in (Literal (Clause h ts') : cs, ixRest)
+    NegatedLiteral (Clause h ts) ->
+      let (ts', ixRest) = foldr freshen ([], ixSrc) ts
+      in (NegatedLiteral (Clause h ts') : cs, ixRest)
+  where
+    freshen t (ts, src) =
+      case t of
+        Anything -> (FreshVar (head src) : ts, tail src)
+        _ -> (t : ts, src)
 
 -- FIXME: Unify these and require inferred relations to be declared in
 -- the schema at db construction time.  That also gives an opportunity
@@ -287,54 +305,6 @@ ruleRelations (Rule h bcs _) = adornedClauseRelation h : mapMaybe literalClauseR
 issueQuery :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Query a)
 issueQuery r ts = return $ Query $ Clause r ts
 
--- If the query has a bound literal, that influences the rules it
--- corresponds to.  Other rules are not affected.  Those positions
--- bound in the query are bound in the associated rules.
---
--- Note: all variables in the head must appear in the body
-adornRule :: (Failure DatalogError m, Eq a, Hashable a)
-              => Query a -> (Clause a, [Literal Clause a]) -> m (Rule a)
-adornRule q (hd, lits) = do
-  (vmap, lits') <- mapAccumM adornLiteral mempty lits
-  (allVars, Literal hd') <- adornLiteral vmap (Literal hd)
-  let headVars = HS.fromList (clauseTerms hd)
-  -- FIXME: This test isn't actually strict enough.  All head vars
-  -- must appear in a non-negative literal
-  case headVars `HS.difference` (HS.fromList (HM.keys allVars)) == mempty of
-    True -> return $! Rule hd' lits' allVars
-    False -> failure RangeRestrictionViolation
-
-adornLiteral :: (Failure DatalogError m, Eq a, Hashable a)
-                => HashMap (Term a) Int
-                -> Literal Clause a
-                -> m (HashMap (Term a) Int, Literal AdornedClause a)
-adornLiteral boundVars l =
-  case l of
-    Literal c -> adornClause Literal c
-    NegatedLiteral c -> adornClause NegatedLiteral c
-    ConditionalClause f ts _ -> return (boundVars, ConditionalClause f ts boundVars)
-  where
-    adornClause constructor (Clause p ts) = do
-      (bound', ts') <- mapAccumM adornTerm boundVars ts
-      let c' = constructor $ AdornedClause p ts'
-      return (bound', c')
-    adornTerm bvs t =
-      case t of
-        -- Atoms are always bound
-        Atom _ -> return (bvs, (t, BoundAtom))
-        BindVar _ -> error "Bind variables are only allowed in queries"
-        Anything ->
-          let ix = HM.size bvs
-              t' = FreshVar ix
-          in return (HM.insert t' ix bvs, (t', Free ix))
-        LogicVar _ ->
-          -- The first occurrence is Free, while the rest are Bound
-          case HM.lookup t bvs of
-            Just ix -> return (bvs, (t, Bound ix))
-            Nothing ->
-              let ix = HM.size bvs
-              in return (HM.insert t ix bvs, (t, Free ix))
-        FreshVar _ -> error "Users cannot create FreshVars"
 
 -- | Run the QueryBuilder action to build a query and initial rule
 -- database
@@ -342,11 +312,11 @@ adornLiteral boundVars l =
 -- Rules are adorned (marking each variable as Free or Bound as they
 -- appear) before being returned.
 runQuery :: (Failure DatalogError m, Eq a, Hashable a)
-            => QueryBuilder m a (Query a) -> Database a -> m (Query a, [Rule a])
+            => QueryBuilder m a (Query a) -> Database a -> m (Query a, [(Clause a, [Literal Clause a])])
 runQuery qm idb = do
   (q, QueryState _ rs) <- runStateT qm (QueryState idb [])
-  rs' <- mapM (adornRule q) rs
-  return (q, rs')
+  --rs' <- mapM (adornRule q) rs
+  return (q, rs)
 
 -- | Group rules by their head relations.  This is needed to perform
 -- semi-naive evaluation easily.
@@ -374,14 +344,3 @@ bindQuery (Query (Clause r ts)) bs =
         Anything -> t : acc
         Atom _ -> t : acc
         FreshVar _ -> error "Users cannot provide FreshVars"
-
--- Helpers missing from the standard libraries
-
-{-# INLINE mapAccumM #-}
--- | Monadic mapAccumL
-mapAccumM :: (Monad m, MonadPlus p) => (acc -> x -> m (acc, y)) -> acc -> [x] -> m (acc, p y)
-mapAccumM _ z [] = return (z, mzero)
-mapAccumM f z (x:xs) = do
-  (z', y) <- f z x
-  (z'', ys) <- mapAccumM f z' xs
-  return (z'', return y `mplus` ys)

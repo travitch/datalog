@@ -15,6 +15,7 @@ data DatalogError = SchemaError Relation
                   | StratificationError
                   | RangeRestrictionViolation
                   | NonVariableInRuleHead
+                  | NoVariableBinding Text
                   deriving (Typeable, Show)
 
 instance Exception DatalogError

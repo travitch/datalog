@@ -24,6 +24,8 @@ import Database.Datalog.Database
 import Database.Datalog.Errors
 import Database.Datalog.Rules
 
+import Debug.Trace
+debug = flip trace
 
 -- | Bindings are vectors of values.  Each variable in a rule is
 -- assigned an index in the Bindings during the adornment process.
@@ -68,8 +70,9 @@ applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 => Database a -> [Rule a] -> m (Database a)
 applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
 applyRuleSet db rss@(r:_) = return $ runST $ do
-  bss <- concat <$> mapM (applyRules db) (orderRules rss)
-  projectLiterals db h bss
+  bss <- concat <$> mapM (applyRules db) (orderRules rss) `debug` show (orderRules rss)
+  db' <- projectLiterals db h bss
+  return db' -- `debug` show db'
   where
     h = ruleHead r
 
@@ -81,11 +84,10 @@ applyRuleSet db rss@(r:_) = return $ runST $ do
 applyRules :: (Eq a, Hashable a, Show a)
               => Database a
               -> [Rule a]
-              -> ST s [(HashMap (Term a) Int, [Bindings s a])]
+              -> ST s [(Rule a, [Bindings s a])]
 applyRules db rs = do
   bs <- mapM (applyRule db) rs
-  let bssMaps = zip (map ruleVariableMap rs) bs
-  return bssMaps
+  return $ zip rs bs
 
 -- | Toplogically sort rules (with SCCs treated as a unit).  This
 -- means that dependency rules will be fired before the rules that
@@ -184,7 +186,7 @@ joinWithDeltaAt db hr b m acc c =
 projectLiterals :: (Eq a, Hashable a, Show a)
                    => Database a
                    -> AdornedClause a
-                   -> [(HashMap (Term a) Int, [Bindings s a])]
+                   -> [(Rule a, [Bindings s a])]
                    -> ST s (Database a)
 projectLiterals db c bssMaps = do
   let r = adornedClauseRelation c
@@ -193,11 +195,11 @@ projectLiterals db c bssMaps = do
   -- We reset the delta since we are computing the new delta for the
   -- next iteration.  The act of adding tuples to the relation
   -- automatically computes the delta.
-  rel'' <- foldM (\irel (vmap, bs) -> foldM (project vmap) irel bs) rel' bssMaps
+  rel'' <- foldM (\irel (rule, bs) -> foldM (project rule) irel bs) rel' bssMaps
   return $ replaceRelation db rel''
   where
-    project vmap !r b = do
-      t <- bindingsToTuple c vmap b
+    project rule !r b = do
+      t <- bindingsToTuple (ruleHead rule) (ruleVariableMap rule) b
       return $ addTupleToRelation r t
 
 -- | Determine if a PartialTuple and a concrete Tuple from the
@@ -351,7 +353,7 @@ projectTupleOntoLiteral c (Bindings binds) (Tuple t) = do
 -- | Convert a set of variable bindings to a tuple that matches the
 -- input clause (which should have all variables).  This is basically
 -- unifying variables with the head of the rule.
-bindingsToTuple :: (Eq a, Hashable a)
+bindingsToTuple :: (Eq a, Hashable a, Show a)
                    => AdornedClause a
                    -> HashMap (Term a) Int
                    -> Bindings s a
@@ -362,7 +364,7 @@ bindingsToTuple c vmap (Bindings bs) = do
   where
     variableTermToValue (t, _) =
       case HM.lookup t vmap of
-        Nothing -> error "NonVariableInRuleHead"
+        Nothing -> error ("NonVariableInRuleHead " ++ show c ++ " " ++ show t ++ " " ++ show vmap)
         Just ix -> V.read bs ix
 
 

@@ -12,6 +12,7 @@ module Database.Datalog.Database (
   databaseRelation,
   dataForRelation,
   addTupleToRelation,
+  addTupleToRelation',
   replaceRelation,
   ensureDatabaseRelation,
   resetRelationDelta,

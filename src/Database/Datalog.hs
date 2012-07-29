@@ -5,7 +5,7 @@ module Database.Datalog (
   Relation,
   DatabaseBuilder,
   QueryBuilder,
-  Term(..),
+  Term(LogicVar, BindVar, Anything, Atom),
   QueryPlan,
   DatalogError(..),
   Query,
@@ -49,6 +49,7 @@ import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
 
 import Debug.Trace
+import Text.Printf
 debug = flip trace
 
 -- | A fully-stratified query plan that is ready to be executed.
@@ -73,9 +74,9 @@ buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                   -> QueryBuilder m a (Query a)
                   -> m (QueryPlan a)
 buildQueryPlan idb qm = do
-  let ipreds = databaseRelations idb
   (q, rs) <- runQuery qm idb
-  rs' <- magicSetsRules ipreds q rs
+  rs' <- magicSetsRules q rs
+  return () `debug` printf "Rules:\n%s\nMagic:\n%s\n" (show rs) (show rs')
   strata <- stratifyRules rs'
   return $! QueryPlan q strata
 
@@ -90,11 +91,12 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
   -- the query.  Those might actually affect the magic rules that are
   -- required...  This is the seed-rule and
   -- seed-predicate-for-insertion code in the clojure implementation
-  edb <- applyStrata strata idb
+  sdb <- seedDatabase idb (concat strata) q bindings
+  edb <- applyStrata strata sdb
   let q' = bindQuery q bindings
       pt = queryToPartialTuple q'
       p = queryPredicate q'
-  return $! map unTuple $ select edb p pt
+  return $! map unTuple $ select edb p pt -- `debug` show edb
 
 -- Private helpers
 
@@ -107,6 +109,6 @@ applyStrata ss@(s:strata) db = do
   -- Group the rules by their head relations.  The delta table has to
   -- be managed for all of the related rules at once.
   db' <- foldM applyRuleSet db (partitionRules s)
-  case databaseHasDelta db' of
+  case databaseHasDelta db' `debug` show db' of
     True -> applyStrata ss db'
     False -> applyStrata strata db'
