@@ -204,9 +204,9 @@ q3 = do
                       , lit employee [jid, x, Anything, Anything]
                       , negLit jobExceptions [jid, y]
                       ]
-  (bj, [x, y]) |- [ lit worksFor [x, y]
-                  , negLit empJob [y, Atom (J "PC Support")]
-                  ]
+  --(bj, [x, y]) |- [ lit worksFor [x, y]
+  --                , negLit empJob [y, Atom (J "PC Support")]
+  --                ]
   issueQuery empJob [ BindVar "name", x ]
 
 t4 :: Assertion

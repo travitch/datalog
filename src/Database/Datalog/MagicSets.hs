@@ -35,7 +35,6 @@ seedDatabase :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 -> m (Database a)
 seedDatabase db0 rs (Query (Clause (Relation rname) ts)) bindings = do
   (tup, bs) <- foldM toTuple ([], []) ts
-  return () `debug` ("Adding initial tuple: " ++ show (reverse tup))
   let magicRel = MagicRelation (BindingPattern (reverse bs)) rname
       r0 = ensureDatabaseRelation db0 magicRel (length tup)
       -- If there is a rule that defines the magic relation, we need
@@ -105,7 +104,11 @@ magicSetsRules q rs =
 
     transformRules !worklist !generated =
       case S.viewl worklist of
-        EmptyL -> return $! concat $ HM.elems generated
+        EmptyL -> do
+          let filteredRules = concat (HM.elems generated)
+              recPreds = HS.fromList $ map queryPatternRelation (HM.keys generated)
+              magicFilterTables = concatMap (toMagicFilterTable recPreds) filteredRules
+          mapM adornRule (map fst filteredRules ++ magicFilterTables)
         elt :< rest ->
           case HM.lookup elt generated of
             -- Already processed this binding pattern
@@ -122,10 +125,10 @@ magicSetsRules q rs =
 -- determine whether or not magic needs to be applied.
     magicTransform :: (Failure DatalogError m, Hashable a, Eq a, Show a)
                       => QueryPattern
-                      -> ([Rule a], Seq QueryPattern)
+                      -> ([((Clause a, [Literal Clause a]), [QueryPattern])], Seq QueryPattern)
                       -> (Clause a, [Literal Clause a])
-                      -> m ([Rule a], Seq QueryPattern)
-    magicTransform bp (newRules, work) (c, lits) = do
+                      -> m ([((Clause a, [Literal Clause a]), [QueryPattern])], Seq QueryPattern)
+    magicTransform bp (newRules, work) rawRule@(c, lits) = do
       let hasB = hasBinding bp
           isNeg = HS.member (clauseRelation c) negatedRelations
           bodyBindingPattern = reverse $ snd $ foldl' bindVars (patternToInitialMap bp c, []) lits
@@ -138,22 +141,36 @@ magicSetsRules q rs =
           -- negation), we don't do the magic transformation.  We
           -- still need to make sure all of its reachable literals are
           -- processed, though.
-          r <- adornRule (c, lits)
-          return (r : newRules, newWork)
+          return ((rawRule, []) : newRules, newWork)
         False -> do
-          let mf = buildMagicFilter bp c
-          r <- adornRule (c, mf : lits)
-          filterRules <- buildMagicFilterRules bp c mf adornedLits -- `debug` (show c ++ " " ++  show (patternToInitialMap bp c)) `debug` show bodyBindingPattern
-          return (r : (filterRules ++ newRules), newWork)
+          let (mf, mp) = buildMagicFilter bp c
+          return (((c, mf : lits), mp : bodyBindingPattern) : newRules, newWork)
+
+-- | For each literal referencing a recursive relation (even if it is
+-- recursive in a different rule), generate a magic filter table
+-- definition rule for it.
+toMagicFilterTable :: (Eq a)
+                      => HashSet Relation
+                      -> ((Clause a, [Literal Clause a]), [QueryPattern])
+                      -> [(Clause a, [Literal Clause a])]
+toMagicFilterTable ps ((c, lits), qps) =
+  map (buildMagicFilterRule lits) (filter (isRecPred . fst) body)
+  where
+    body = zip lits qps
+    isRecPred l =
+      case l of
+        Literal (Clause r _) -> r `HS.member` ps
+        _ -> False
 
 -- | Take a binding pattern and a rule head and create its magic
 -- filter literal.  The magic filter literal is the head clause
 -- changed to reference a magic version of the same relation and with
 -- the free columns deleted.
-buildMagicFilter :: QueryPattern -> Clause a -> Literal Clause a
+buildMagicFilter :: QueryPattern -> Clause a -> (Literal Clause a, QueryPattern)
 buildMagicFilter qp (Clause (Relation t) ts) =
-  Literal (Clause (MagicRelation bp t) retainedTs)
+  (Literal (Clause mrel retainedTs), QueryPattern mrel (BindingPattern (map (const F) retainedTs)))
   where
+    mrel = MagicRelation bp t
     bp = queryPatternBindings qp
     retainedTs = takeBoundTerms qp ts
 buildMagicFilter _ _ = error "Cannot have a magic relation yet"
@@ -175,38 +192,17 @@ takeBoundTerms (QueryPattern _ qp) ts =
 --  2) Turn O into a magic clause and delete its free columns
 --
 --  3) Replace the head with O
-buildMagicFilterRules :: (Failure DatalogError m, Eq a, Hashable a)
-                         => QueryPattern
-                         -> Clause a
-                         -> Literal Clause a
-                         -> [(Literal Clause a, QueryPattern)]
-                         -> m [Rule a]
-buildMagicFilterRules qpatt@(QueryPattern _ qp) (Clause r ts) mf lits =
-  foldM build [] lits
-  where
-    build acc (l, QueryPattern _ bp) =
-      case l of
-        NegatedLiteral _ -> return acc
-        ConditionalClause _ _ _ -> return acc
-        Literal c ->
-          case clauseRelation c == r && bp == qp of
-            -- This occurrence has a different binding pattern
-            False -> return acc `debug` ("  " ++ show (clauseRelation c) ++ " " ++  show r ++ " " ++ show bp ++ " " ++ show qp)
-            -- This one has the same binding patter and we have to
-            -- generate a rule for this occurrence.  Don't forget to
-            -- add @mf@ to the beginning of each constructed rule.  We
-            -- need to do this since we are working on an early
-            -- version of the rule that doesn't have the magic filter
-            -- added.  Each of these magic table rules needs that
-            -- filter, so we have to add it manually.
-            True -> do
-              return () `debug` ("  Building magic rule for " ++ show bp)
-              let retainedLits = takeWhile (/=l) (map fst lits)
-                  retainedTerms = takeBoundTerms qpatt (clauseTerms c)
-                  Relation relName = clauseRelation c
-                  h = Clause (MagicRelation qp relName) retainedTerms
-              mrule <- adornRule (h, (mf : retainedLits))
-              return (mrule : acc)
+buildMagicFilterRule :: (Eq a)
+                        => [Literal Clause a]
+                        -> (Literal Clause a, QueryPattern)
+                        -> (Clause a, [Literal Clause a])
+buildMagicFilterRule lits (lc@(Literal c), qp) =
+  let retainedLits = takeWhile (/= lc) lits
+      retainedTerms = takeBoundTerms qp (clauseTerms c)
+      Relation relName = clauseRelation c
+      h = Clause (MagicRelation (queryPatternBindings qp) relName) retainedTerms
+  in (h, retainedLits)
+
 
 bindVars :: (Eq a, Hashable a)
             => (HashSet (Term a), [QueryPattern])
@@ -217,7 +213,7 @@ bindVars acc@(alreadyBound, patts) l =
     ConditionalClause _ _ _ -> acc
     Literal (Clause r ts) ->
       let (binds, qp) = foldl' bindVar (alreadyBound, []) ts
-      in (binds, QueryPattern r (BindingPattern (reverse qp)) : patts) `debug` show qp
+      in (binds, QueryPattern r (BindingPattern (reverse qp)) : patts)
     -- For now, we treat all variables in a negated literal as Free
     -- because we don't want to generate any magic clauses for them
     -- (that can break stratification).  Treating them all as free
@@ -241,14 +237,6 @@ bindVars acc@(alreadyBound, patts) l =
 patternToInitialMap :: (Eq a, Hashable a) => QueryPattern -> Clause a -> HashSet (Term a)
 patternToInitialMap qp (Clause _ ts) =
   HS.fromList $ takeBoundTerms qp ts
-
--- Maybe do it by the book.  Start with the query binding pattern and
--- accumulate a list of encountered binding patterns.  For the current
--- pattern, copy and modify the rules from @rs@ for that binding
--- pattern.
---
--- This should keep everything uniform
-
 
 data QueryPattern = QueryPattern { queryPatternRelation :: Relation
                                  , queryPatternBindings :: BindingPattern
@@ -276,13 +264,8 @@ queryPattern (Query c) =
 -- If the input query binding doesn't have any bound elements, the
 -- rule gets no magic.
 
-
--- The big outstanding question is exactly how binding patterns are
--- determined.  The binding patterns assigned at rule assertion time
--- do not seem to quite apply anymore because we are propagating a
--- binding from the query...  How deeply does that impact the rest of
--- the rules?
-
+-- FIXME: This would be better if dead rules couldn't affect it...
+-- a dead rule with a negation will be a problem.
 collectNegatedRelations :: (Clause a, [Literal Clause a])
                            -> HashSet Relation
                            -> HashSet Relation
@@ -344,7 +327,6 @@ adornLiteral boundVars l =
         FreshVar _ ->
           let ix = HM.size bvs
           in return (HM.insert t ix bvs, (t, Free ix))
-          -- error "Users cannot create FreshVars"
 
 -- Helpers missing from the standard libraries
 

@@ -76,7 +76,6 @@ buildQueryPlan :: (Failure DatalogError m, Eq a, Hashable a, Show a)
 buildQueryPlan idb qm = do
   (q, rs) <- runQuery qm idb
   rs' <- magicSetsRules q rs
-  return () `debug` printf "Rules:\n%s\nMagic:\n%s\n" (show rs) (show rs')
   strata <- stratifyRules rs'
   return $! QueryPlan q strata
 
@@ -109,6 +108,6 @@ applyStrata ss@(s:strata) db = do
   -- Group the rules by their head relations.  The delta table has to
   -- be managed for all of the related rules at once.
   db' <- foldM applyRuleSet db (partitionRules s)
-  case databaseHasDelta db' `debug` show db' of
+  case databaseHasDelta db' of
     True -> applyStrata ss db'
     False -> applyStrata strata db'
