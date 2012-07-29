@@ -14,3 +14,5 @@ test suite for some details.
 
  * Magic sets transformation
  * Optional BDD backend for a subset of queries
+ * Rewrite literals like f(X,X) into f(X,Y), X=Y.  A few internals
+   assume that the same variable doesn't appear twice in a literal.
