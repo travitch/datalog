@@ -70,7 +70,7 @@ applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 => Database a -> [Rule a] -> m (Database a)
 applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
 applyRuleSet db rss@(r:_) = return $ runST $ do
-  bss <- concat <$> mapM (applyRules db) (orderRules rss) `debug` show (orderRules rss)
+  bss <- concat <$> mapM (applyRules db) (orderRules rss)
   db' <- projectLiterals db h bss
   return db' -- `debug` show db'
   where
@@ -274,7 +274,7 @@ joinLiteral :: (Eq a, Hashable a)
                -> ST s [Bindings s a]
 joinLiteral db bs (Literal c) = joinLiteralWith c bs (normalJoin db c)
 joinLiteral db bs (NegatedLiteral c) = joinLiteralWith c bs (negatedJoin db c)
-joinLiteral _ bs (ConditionalClause p vs m) =
+joinLiteral _ bs (ConditionalClause _ p vs m) =
   foldM (applyJoinCondition p vs m) [] bs
 
 -- | Extract the values that the predicate requires from the current

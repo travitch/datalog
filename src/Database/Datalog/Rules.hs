@@ -57,12 +57,19 @@ import Database.Datalog.Database
 -- debug = flip trace
 
 data QueryState a = QueryState { intensionalDatabase :: Database a
+                               , conditionalIdSource :: Int
                                , queryRules :: [(Clause a, [Literal Clause a])]
                                }
 
 -- | The Monad in which queries are constructed and rules are declared
 type QueryBuilder m a = StateT (QueryState a) m
 
+nextConditionalId :: (Failure DatalogError m) => QueryBuilder m a Int
+nextConditionalId = do
+  s <- get
+  let cid = conditionalIdSource s
+  put s { conditionalIdSource = cid + 1 }
+  return cid
 
 data Term a = LogicVar !Text
               -- ^ A basic logic variable.  Equality is based on the
@@ -134,60 +141,78 @@ instance (Show a) => Show (AdornedClause a) where
 -- functions over literals and logic variables.
 data Literal ctype a = Literal (ctype a)
                      | NegatedLiteral (ctype a)
-                     | ConditionalClause ([a] -> Bool) [Term a] (HashMap (Term a) Int)
---                     | MagicLiteral (ctype a)
+                     | ConditionalClause Int ([a] -> Bool) [Term a] (HashMap (Term a) Int)
 
+-- | This equality instance is complicated because conditional clauses
+-- contain functions.  We assign a unique id at conditional clause
+-- creation time so they have identity and we can compare on that.
+-- Rules from different queries cannot be compared safely, but that
+-- shouldn't be a problem because there isn't really a way to sneak a
+-- rule reference out of a query.  If there is a shady way to do so,
+-- don't because it will be bad.
 instance (Eq a, Eq (ctype a)) => Eq (Literal ctype a) where
   (Literal c1) == (Literal c2) = c1 == c2
   (NegatedLiteral c1) == (NegatedLiteral c2) = c1 == c2
+  (ConditionalClause cid1 _ _ _) == (ConditionalClause cid2 _ _ _) = cid1 == cid2
   _ == _ = False
 
 instance (Hashable a, Hashable (ctype a)) => Hashable (Literal ctype a) where
   hash (Literal c) = 1 `combine` hash c
   hash (NegatedLiteral c) = 2 `combine` hash c
-  hash (ConditionalClause _ ts vm) = 3 `combine` hash ts `combine` hash (HM.size vm)
+  hash (ConditionalClause cid _ ts vm) =
+    3 `combine` hash cid `combine` hash ts `combine` hash (HM.size vm)
 
-lit :: Relation -> [Term a] -> Literal Clause a
-lit p ts = Literal $ Clause p ts
+lit :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
+lit p ts = return $ Literal $ Clause p ts
 
-negLit :: Relation -> [Term a] -> Literal Clause a
-negLit p ts = NegatedLiteral $ Clause p ts
+negLit :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
+negLit p ts = return $ NegatedLiteral $ Clause p ts
 
-cond1 :: (Eq a, Hashable a)
+cond1 :: (Failure DatalogError m, Eq a, Hashable a)
          => (a -> Bool)
          -> Term a
-         -> Literal Clause a
-cond1 p t = ConditionalClause (\[x] -> p x) [t] mempty
+         -> QueryBuilder m a (Literal Clause a)
+cond1 p t = do
+  cid <- nextConditionalId
+  return $ ConditionalClause cid (\[x] -> p x) [t] mempty
 
-cond2 :: (Eq a, Hashable a)
+cond2 :: (Failure DatalogError m, Eq a, Hashable a)
          => (a -> a -> Bool)
          -> (Term a, Term a)
-         -> Literal Clause a
-cond2 p (t1, t2) = ConditionalClause (\[x1, x2] -> p x1 x2) [t1, t2] mempty
+         -> QueryBuilder m a (Literal Clause a)
+cond2 p (t1, t2) = do
+  cid <- nextConditionalId
+  return $ ConditionalClause cid (\[x1, x2] -> p x1 x2) [t1, t2] mempty
 
 
-cond3 :: (Eq a, Hashable a)
+cond3 :: (Failure DatalogError m, Eq a, Hashable a)
          => (a -> a -> a -> Bool)
          -> (Term a, Term a, Term a)
-         -> Literal Clause a
-cond3 p (t1, t2, t3) = ConditionalClause (\[x1, x2, x3] -> p x1 x2 x3) [t1, t2, t3] mempty
+         -> QueryBuilder m a (Literal Clause a)
+cond3 p (t1, t2, t3) = do
+  cid <- nextConditionalId
+  return $ ConditionalClause cid (\[x1, x2, x3] -> p x1 x2 x3) [t1, t2, t3] mempty
 
-cond4 :: (Eq a, Hashable a)
+cond4 :: (Failure DatalogError m, Eq a, Hashable a)
          => (a -> a -> a -> a -> Bool)
          -> (Term a, Term a, Term a, Term a)
-         -> Literal Clause a
-cond4 p (t1, t2, t3, t4) = ConditionalClause (\[x1, x2, x3, x4] -> p x1 x2 x3 x4) [t1, t2, t3, t4] mempty
+         -> QueryBuilder m a (Literal Clause a)
+cond4 p (t1, t2, t3, t4) = do
+  cid <- nextConditionalId
+  return $ ConditionalClause cid (\[x1, x2, x3, x4] -> p x1 x2 x3 x4) [t1, t2, t3, t4] mempty
 
-cond5 :: (Eq a, Hashable a)
+cond5 :: (Failure DatalogError m, Eq a, Hashable a)
          => (a -> a -> a -> a -> a -> Bool)
          -> (Term a, Term a, Term a, Term a, Term a)
-         -> Literal Clause a
-cond5 p (t1, t2, t3, t4, t5) = ConditionalClause (\[x1, x2, x3, x4, x5] -> p x1 x2 x3 x4 x5) [t1, t2, t3, t4, t5] mempty
+         -> QueryBuilder m a (Literal Clause a)
+cond5 p (t1, t2, t3, t4, t5) = do
+  cid <- nextConditionalId
+  return $ ConditionalClause cid (\[x1, x2, x3, x4, x5] -> p x1 x2 x3 x4 x5) [t1, t2, t3, t4, t5] mempty
 
 instance (Show a, Show (ctype a)) => Show (Literal ctype a) where
   show (Literal c) = show c
   show (NegatedLiteral c) = '~' : show c
-  show (ConditionalClause _ ts _) = printf "f(%s)" (show ts)
+  show (ConditionalClause _ _ ts _) = printf "f(%s)" (show ts)
 
 -- | A rule has a head and body clauses.  Body clauses can be normal
 -- clauses, negated clauses, or conditionals.
@@ -216,17 +241,18 @@ infixr 0 |-
 -- schema.
 (|-), assertRule :: (Failure DatalogError m)
         => (Relation, [Term a]) -- ^ The rule head
-        -> [Literal Clause a] -- ^ Body literals
+        -> [QueryBuilder m a (Literal Clause a)] -- ^ Body literals
         -> QueryBuilder m a ()
 (|-) = assertRule
 assertRule (p, ts) b = do
   -- FIXME: Assert that Anything does not appear in the head terms
   -- (that is a range restriction violation).  Also check the range
   -- restriction here.
+  b' <- sequence b
   let h = Clause p ts
-      b' = fst $ foldr freshenVars ([], [0..]) b
+      b'' = fst $ foldr freshenVars ([], [0..]) b'
   s <- get
-  put s { queryRules = (h, b') : queryRules s }
+  put s { queryRules = (h, b'') : queryRules s }
 
 -- | Replace all instances of Anything with a FreshVar with a unique
 -- (to the rule) index.  This lets later evaluation stages ignore
@@ -236,7 +262,7 @@ freshenVars :: Literal Clause a
                -> ([Literal Clause a], [Int])
 freshenVars l (cs, ixSrc) =
   case l of
-    ConditionalClause _ _ _ -> (l : cs, ixSrc)
+    ConditionalClause _ _ _ _ -> (l : cs, ixSrc)
     Literal (Clause h ts) ->
       let (ts', ixRest) = foldr freshen ([], ixSrc) ts
       in (Literal (Clause h ts') : cs, ixRest)
@@ -314,8 +340,7 @@ issueQuery r ts = return $ Query $ Clause r ts
 runQuery :: (Failure DatalogError m, Eq a, Hashable a)
             => QueryBuilder m a (Query a) -> Database a -> m (Query a, [(Clause a, [Literal Clause a])])
 runQuery qm idb = do
-  (q, QueryState _ rs) <- runStateT qm (QueryState idb [])
-  --rs' <- mapM (adornRule q) rs
+  (q, QueryState _ _ rs) <- runStateT qm (QueryState idb 0 [])
   return (q, rs)
 
 -- | Group rules by their head relations.  This is needed to perform

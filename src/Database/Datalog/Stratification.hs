@@ -106,6 +106,6 @@ makeRuleDependencies = toContexts . foldr addRuleDeps (mempty, mempty)
         NegatedLiteral (AdornedClause r _) ->
           (HM.insertWith HS.union hrel (HS.singleton r) m,
            HS.insert (hrel, r) es)
-        ConditionalClause _ _ _ -> acc
+        ConditionalClause _ _ _ _ -> acc
     toContexts (dg, es) = (HM.foldrWithKey toContext [] dg, es)
     toContext hr brs acc = (hr, hr, HS.toList brs) : acc

@@ -210,7 +210,7 @@ bindVars :: (Eq a, Hashable a)
             -> (HashSet (Term a), [QueryPattern])
 bindVars acc@(alreadyBound, patts) l =
   case l of
-    ConditionalClause _ _ _ -> acc
+    ConditionalClause _ _ _ _ -> acc
     Literal (Clause r ts) ->
       let (binds, qp) = foldl' bindVar (alreadyBound, []) ts
       in (binds, QueryPattern r (BindingPattern (reverse qp)) : patts)
@@ -305,7 +305,8 @@ adornLiteral boundVars l =
   case l of
     Literal c -> adornClause Literal c
     NegatedLiteral c -> adornClause NegatedLiteral c
-    ConditionalClause f ts _ -> return (boundVars, ConditionalClause f ts boundVars)
+    ConditionalClause cid f ts _ ->
+      return (boundVars, ConditionalClause cid f ts boundVars)
   where
     adornClause constructor (Clause p ts) = do
       (bound', ts') <- mapAccumM adornTerm boundVars ts
