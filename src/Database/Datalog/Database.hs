@@ -33,6 +33,7 @@ import Data.Text ( Text )
 import Database.Datalog.Errors
 import Database.Datalog.Relation
 
+import Text.Printf
 import Debug.Trace
 debug = flip trace
 
@@ -152,7 +153,8 @@ withDeltaRelation d@(Database db) r action =
       in Database $ HM.insert r rel' db
 
 resetRelationDelta :: DBRelation a -> DBRelation a
-resetRelationDelta rel = rel { relationDelta = mempty }
+resetRelationDelta rel = rel { relationDelta = mempty } -- `debug`
+                          -- printf "Old Delta for %s: %d (relation size is: %d)\n" (show (relationName rel)) (length (relationDelta rel)) (length (relationData rel))
 
 -- | Get a relation by name.  If it does not exist in the database,
 -- return a new relation with the appropriate arity.

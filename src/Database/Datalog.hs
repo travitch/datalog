@@ -91,7 +91,7 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
   -- required...  This is the seed-rule and
   -- seed-predicate-for-insertion code in the clojure implementation
   sdb <- seedDatabase idb (concat strata) q bindings
-  edb <- applyStrata strata sdb
+  edb <- applyStrata strata sdb -- `debug` ("Strata: " ++ show strata)
   let q' = bindQuery q bindings
       pt = queryToPartialTuple q'
       p = queryPredicate q'
@@ -104,10 +104,16 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
 applyStrata :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                => [[Rule a]] -> Database a -> m (Database a)
 applyStrata [] db = return db
-applyStrata ss@(s:strata) db = do
+applyStrata (s:strata) db = do
+  -- We really need to topsort the rules, THEN we can partition by
+  -- rule heads.  If we topsort, we can take the fixed point of each
+  -- SCC in turn and not re-compute anything unnecessarily
+
   -- Group the rules by their head relations.  The delta table has to
   -- be managed for all of the related rules at once.
-  db' <- foldM applyRuleSet db (partitionRules s)
-  case databaseHasDelta db' of
-    True -> applyStrata ss db'
-    False -> applyStrata strata db'
+  db' <- foldM applyRuleSet db (orderRules s) -- `debug` show (orderRules s)
+         -- (partitionRules s) `debug` show (partitionRules s)
+  -- case databaseHasDelta db' of
+  --   True -> applyStrata ss db'
+  --   False ->
+  applyStrata strata db'

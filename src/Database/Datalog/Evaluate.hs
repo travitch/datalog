@@ -4,6 +4,7 @@
 -- It currently uses a bottom-up semi-naive evaluator.
 module Database.Datalog.Evaluate (
   applyRuleSet,
+  orderRules,
   select
   ) where
 
@@ -69,12 +70,20 @@ newtype Bindings s a = Bindings (STVector s a)
 applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
                 => Database a -> [Rule a] -> m (Database a)
 applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
-applyRuleSet db rss@(r:_) = return $ runST $ do
-  bss <- concat <$> mapM (applyRules db) (orderRules rss)
-  db' <- projectLiterals db h bss
-  return db' -- `debug` show db'
-  where
-    h = ruleHead r
+applyRuleSet db rss = do
+  res <- return $ runST $ do
+    -- Group rules by their head relations
+    let ruleGroups = partitionRules rss
+    bss <- mapM (applyRules db) ruleGroups -- `debug` show (orderRules
+    -- rss) Group bssMaps by their head clauses and then foldM over
+    -- that.  This way deltas are updated per-relation
+    db' <- foldM projectLiterals db bss
+    return db'
+  -- If there is only a single *non-recursive* rule, we don't need to
+  -- iterate
+  case databaseHasDelta res {- && length rss > 1 -} of
+    False -> return res
+    True -> applyRuleSet res rss
 
 -- | Each of the lists of generated bindings has its own
 -- ruleVariableMap, so zip them together so that project has them
@@ -173,6 +182,9 @@ joinWithDeltaAt db hr b m acc c =
       bs <- foldM swapJoin [Bindings v0] b
       return (bs : acc)
   where
+    -- FIXME: We can probably salvage delta tables if the delta tables
+    -- are only used on *recursive* evaluations.  On the first
+    -- evaluation of any rule group, the full table must be used.
     swapJoin bs thisClause =
       case thisClause == c of
         False -> joinLiteral db bs thisClause
@@ -185,11 +197,13 @@ joinWithDeltaAt db hr b m acc c =
 -- with the new one.
 projectLiterals :: (Eq a, Hashable a, Show a)
                    => Database a
-                   -> AdornedClause a
                    -> [(Rule a, [Bindings s a])]
                    -> ST s (Database a)
-projectLiterals db c bssMaps = do
-  let r = adornedClauseRelation c
+projectLiterals db bssMaps@((r1, _):_) = do
+  -- all of the rule heads in bssMaps have the same head relation, so
+  -- recover one of them
+  let c = ruleHead r1
+      r = adornedClauseRelation c
       rel = ensureDatabaseRelation db r (length (adornedClauseTerms c))
       rel' = resetRelationDelta rel
   -- We reset the delta since we are computing the new delta for the
