@@ -10,8 +10,8 @@ data Binding = B {- Bound -} | F {- Free -}
              deriving (Eq, Ord, Show)
 
 instance Hashable Binding where
-  hash B = 105
-  hash F = 709
+  hashWithSalt s B = s `hashWithSalt` (105 :: Int)
+  hashWithSalt s F = s `hashWithSalt` (709 :: Int)
 
 newtype BindingPattern = BindingPattern { bindingPattern :: [Binding] }
                        deriving (Eq, Ord)
@@ -20,7 +20,7 @@ instance Show BindingPattern where
   show (BindingPattern bs) = concatMap show bs
 
 instance Hashable BindingPattern where
-  hash (BindingPattern bs) = hash bs
+  hashWithSalt s (BindingPattern bs) = s `hashWithSalt` bs
 
 data Adornment = Free !Int -- ^ The index to bind a free variable
                | BoundAtom
@@ -28,6 +28,8 @@ data Adornment = Free !Int -- ^ The index to bind a free variable
                deriving (Eq, Show)
 
 instance Hashable Adornment where
-  hash (Free i) = 1 `combine` hash i
-  hash BoundAtom = 7776
-  hash (Bound i) = 2 `combine` hash i
+  hashWithSalt s BoundAtom = s `hashWithSalt` (7776 :: Int)
+  hashWithSalt s (Free i) =
+    s `hashWithSalt` (1 :: Int) `hashWithSalt` i
+  hashWithSalt s (Bound i) =
+    s `hashWithSalt` (2 :: Int) `hashWithSalt` i

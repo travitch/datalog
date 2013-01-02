@@ -99,7 +99,7 @@ orderRules rs = map toList (stronglyConnComp deps)
     toList (CyclicSCC rss) = rss
     toKeyM = HM.fromList (zip rs [0..])
     toKey :: Rule a -> Int
-    toKey r = HM.lookupDefault (error "Missing toKeyM entry") r toKeyM
+    toKey r = fromMaybe (error "Missing toKeyM entry") $ HM.lookup r toKeyM
 
     deps = foldr toContext [] rs
     toContext r@(Rule _ b _) acc =

@@ -94,11 +94,14 @@ instance (Show a) => Show (Term a) where
   show (FreshVar _) = "*"
 
 instance (Hashable a) => Hashable (Term a) where
-  hash (LogicVar t) = hash t `combine` 1
-  hash (BindVar t) = hash t `combine` 2
-  hash (Atom a) = hash a
-  hash Anything = 99
-  hash (FreshVar i) = 22 `combine` hash i
+  hashWithSalt s (LogicVar t) =
+    s `hashWithSalt` t `hashWithSalt` (1 :: Int)
+  hashWithSalt s (BindVar t) =
+    s `hashWithSalt` t `hashWithSalt` (2 :: Int)
+  hashWithSalt s (Atom a) = s `hashWithSalt` a
+  hashWithSalt s Anything = s `hashWithSalt` (99 :: Int)
+  hashWithSalt s (FreshVar i) =
+    s `hashWithSalt` i `hashWithSalt` (22 :: Int)
 
 instance (Eq a) => Eq (Term a) where
   (LogicVar t1) == (LogicVar t2) = t1 == t2
@@ -128,7 +131,8 @@ instance (Eq a) => Eq (AdornedClause a) where
   (AdornedClause r1 cs1) == (AdornedClause r2 cs2) = r1 == r2 && cs1 == cs2
 
 instance (Hashable a) => Hashable (AdornedClause a) where
-  hash (AdornedClause r ts) = hash r `combine` hash ts
+  hashWithSalt s (AdornedClause r ts) =
+    s `hashWithSalt` r `hashWithSalt` ts
 
 instance (Show a) => Show (AdornedClause a) where
   show (AdornedClause p ats) =
@@ -157,10 +161,12 @@ instance (Eq a, Eq (ctype a)) => Eq (Literal ctype a) where
   _ == _ = False
 
 instance (Hashable a, Hashable (ctype a)) => Hashable (Literal ctype a) where
-  hash (Literal c) = 1 `combine` hash c
-  hash (NegatedLiteral c) = 2 `combine` hash c
-  hash (ConditionalClause cid _ ts vm) =
-    3 `combine` hash cid `combine` hash ts `combine` hash (HM.size vm)
+  hashWithSalt s (Literal c) =
+    s `hashWithSalt` c `hashWithSalt` (1 :: Int)
+  hashWithSalt s (NegatedLiteral c) =
+    s `hashWithSalt` c `hashWithSalt` (2 :: Int)
+  hashWithSalt s (ConditionalClause cid _ ts vm) =
+    s `hashWithSalt` cid `hashWithSalt` ts `hashWithSalt` HM.size vm
 
 lit :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
 lit p ts = return $ Literal $ Clause p ts
@@ -229,7 +235,8 @@ instance (Eq a) => Eq (Rule a) where
     h1 == h2 && b1 == b2 && vms1 == vms2
 
 instance (Hashable a) => Hashable (Rule a) where
-  hash (Rule h b vms) = hash h `combine` hash b `combine` hash (HM.size vms)
+  hashWithSalt s (Rule h b vms) =
+    s `hashWithSalt` h `hashWithSalt` b `hashWithSalt` HM.size vms
 
 newtype Query a = Query { unQuery :: Clause a }
 

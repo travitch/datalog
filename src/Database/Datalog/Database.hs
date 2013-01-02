@@ -42,7 +42,7 @@ newtype Tuple a = Tuple { unTuple ::  [a] }
                 deriving (Eq, Show)
 
 instance (Hashable a) => Hashable (Tuple a) where
-  hash (Tuple es) = hash es
+  hashWithSalt s (Tuple es) = s `hashWithSalt` es
 
 -- | A relation whose elements are fixed-length lists of a
 -- user-defined type.  This is only used internally and is not exposed
