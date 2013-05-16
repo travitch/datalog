@@ -21,7 +21,8 @@ module Database.Datalog.Database (
   ) where
 
 import Control.Failure
-import Control.Monad.State.Strict
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State.Strict
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM

@@ -26,9 +26,9 @@ library
                    Database.Datalog.Rules
                    Database.Datalog.Stratification
   build-depends: base > 3 && < 5, containers, unordered-containers, hashable,
-                 failure, text, mtl, vector
+                 failure, text, transformers, vector
   hs-source-dirs: src
-  ghc-options: -Wall
+  ghc-options: -Wall -auto-all
   ghc-prof-options: -auto-all
 
 test-suite NQueensTest
@@ -36,7 +36,7 @@ test-suite NQueensTest
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: NQueens.hs
-  ghc-options: -Wall
+  ghc-options: -Wall -prof -auto-all
   ghc-prof-options: -auto-all
   build-depends: datalog, base > 3 && < 5, text, containers, hashable,
                  test-framework, test-framework-hunit, HUnit

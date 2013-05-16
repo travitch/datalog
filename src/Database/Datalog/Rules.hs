@@ -36,7 +36,8 @@ module Database.Datalog.Rules (
   ) where
 
 import Control.Failure
-import Control.Monad.State.Strict
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State.Strict
 import Data.Function ( on )
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
