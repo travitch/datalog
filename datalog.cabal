@@ -4,15 +4,20 @@
 name:                datalog
 version:             0.1.0.0
 synopsis:            An implementation of datalog in Haskell
--- description:
 license:             BSD3
 license-file:        LICENSE
 author:              Tristan Ravitch
 maintainer:          travitch@cs.wisc.edu
--- copyright:
 category:            Database
 build-type:          Simple
 cabal-version:       >=1.10
+description: This is an implementation of datalog in pure Haskell.
+             It is implemented as a library and can be used from within
+             any Haskell application.  As a consequence, it supports both
+             standard Datalog operations and arbitrary predicates written
+             in Haskell.
+             .
+             One day it will have a command-line program as well.
 
 library
   default-language: Haskell2010
