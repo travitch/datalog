@@ -83,3 +83,7 @@ test-suite WorksForTest
                  test-framework,
                  test-framework-hunit,
                  HUnit
+
+source-repository head
+  type: git
+  location: git://github.com/travitch/datalog.git
