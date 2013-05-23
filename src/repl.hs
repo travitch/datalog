@@ -1,6 +1,7 @@
 
 import Database.Datalog.REPL.REPL
 
+main :: IO ()
 main = replMain
 
 {-
