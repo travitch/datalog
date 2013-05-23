@@ -5,15 +5,15 @@
 
 -- |Parse Datalog statements and convert them to internal representation
 
-module Database.Datalog.REPL.Parser
-{-
-    (
-      statements
-    , Env(..)
-    , initialEnv
-    , P
-    ) -} where
-
+module Database.Datalog.REPL.Parser (
+  P,
+  Env(..),
+  initialEnv,
+  statements,
+  queryP,
+  run,
+  tp
+  ) where
 
 import qualified Data.Text as T
 import Data.Text (Text)
@@ -27,7 +27,7 @@ import Control.Monad ( forM_, when )
 import Data.Either (partitionEithers)
 
 import Text.Parsec.Combinator
-import Text.Parsec.Prim hiding (State)
+import Text.Parsec.Prim
 import Text.Parsec.Error
 import Text.Parsec.Char
 
@@ -112,8 +112,8 @@ spaced = between spaces spaces
 
 atom :: P a -> P (Atom a)
 atom t = do
-    pred <- con
-    Atom pred <$> (betweenParens (t `sepBy` spaced comma) <|> return [])
+    p <- con
+    Atom p <$> (betweenParens (t `sepBy` spaced comma) <|> return [])
   <?> "atom"
 
 pat :: P Pat
@@ -129,32 +129,32 @@ queryP = spaced (atom term)
 
 rule :: P Rule
 rule = do
-    head <- atom term
+    h <- atom term
     spaced turnstile <?> ":-"
     -- body <- pat `sepBy` many1 space
     body <- pat `sepBy` spaced comma
-    safe $ Rule head body
+    safe $ Rule h body
   <?> "rule"
 
 safe :: Rule -> P Rule
-safe rule@(Rule head body) = do
+safe r@(Rule h body) = do
         forM_ headVars $ \v ->
             when (v `notElem` bodyVars) $ do
                 unexpected $ "variable " ++ show (varName v) ++ " appears in head, but not occur positively in body"
         forM_ subVars $ \v ->
             when (v `notElem` bodyVars) $ do
                 unexpected $ "variable " ++ show (varName v) ++ " appears in a negated subgoal, but not occur positively in body"
-        return rule
+        return r
     where
         headVars, bodyVars, subVars :: [Var]
-        headVars = [ v | Var v <- atomArgs head ]
+        headVars = [ v | Var v <- atomArgs h ]
         bodyVars = concatMap posVars body
         subVars  = concatMap negVars body
 
         posVars, negVars :: Pat -> [Var]
-        posVars (Pat atom) = [ v | Var v <- atomArgs atom ]
+        posVars (Pat a) = [ v | Var v <- atomArgs a ]
         posVars (Not _) = []
-        negVars (Not atom) = [ v | Var v <- atomArgs atom ]
+        negVars (Not a) = [ v | Var v <- atomArgs a ]
         negVars (Pat _) = []
 
 statement :: P (Either Fact Rule)
@@ -176,9 +176,11 @@ run = runParser statements initialEnv "-" . T.pack
 -- ---------------------------------------------------------------------
 -- Test stuff
 
+tp :: Parsec Text Env a -> String -> a
 tp parser xs = case runParser parser initialEnv "-" (T.pack xs) of
     Left msg -> error $ "[parser] " ++ (show msg)
     Right x -> x
 
-t = run "x(B,C) :- a(B,C), a(B,c)."
+testCase :: Either ParseError ([Fact], [Rule])
+testCase = run "x(B,C) :- a(B,C), a(B,c)."
 

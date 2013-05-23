@@ -29,19 +29,10 @@ import qualified Database.Datalog as D
 
 -- ---------------------------------------------------------------------
 
-
-main :: IO ()
-main = do
-  io <- stateLowerIO (DB True mempty)
-  repl io
-
 replMain :: IO ()
 replMain = do
   io <- stateLowerIO (DB True mempty)
   repl io
-
-
-type ReplS = Env
 
 showDoc :: Pretty p => p -> String
 showDoc = show . doc
@@ -62,9 +53,7 @@ commands2 =
   ]
 
 runCommands :: Backend f => (forall a . f a -> IO a) -> [(String, IO ())]
-runCommands run = map (\(a,b) -> (a, run b >>= putStrLn)) commands2
-
-ac f = get >>= lift . outputStrLn . show . doc . f . db . fst
+runCommands runner = map (\(a,b) -> (a, runner b >>= putStrLn)) commands2
 
 repl :: Backend f => LowerIO f -> IO ()
 repl io = let

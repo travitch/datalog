@@ -42,21 +42,24 @@ toDatalog (fs,rs) = DL fs' rs' []
 -- ---------------------------------------------------------------------
 
 on :: (a -> a -> b) -> (c -> a) -> c -> c -> b
-on (*) f x y = f x * f y
+on op f x y = f x `op` f y
 
 type Name = String
 
 type Id = Int
 
 newtype Var = V String deriving (Show,Eq,Ord)  -- x
+varName :: Var -> String
 varName (V s) = s
 
 data Con = C Id String deriving (Show) -- Foo
+conName :: Con -> String
 conName (C _ s) = s
+conId :: Con -> Id
 conId (C x _) = x
 
 instance Eq Con where
-    (==) = (==) `on` conId 
+    (==) = (==) `on` conId
     (/=) = (/=) `on` conId
 
 instance Ord Con where
@@ -76,7 +79,7 @@ type QueryResult = (Atom Term,[Fact])
 
 instance Monoid Datalog where
   mempty = DL M.empty M.empty []
-  mappend (DL af ar aq) (DL bf br bq) 
+  mappend (DL af ar aq) (DL bf br bq)
       = DL (af `mappend` bf) (ar `mappend` br) (aq `mappend` bq)
 type Subst = [(Var,Con)]
 
@@ -96,7 +99,7 @@ atomSelector a@(Atom _ terms) = ((atomName a),length terms)
 
 data Pat = Not (Atom Term) | Pat (Atom Term) deriving (Show,Eq,Ord)
 patAtom :: Pat -> Atom Term
-patAtom (Pat a) = a 
+patAtom (Pat a) = a
 patAtom (Not a) = a
 
 isNot :: Pat -> Bool
@@ -107,7 +110,7 @@ data Rule = Rule (Atom Term) [Pat] deriving (Show,Eq,Ord)
 ruleHead :: Rule -> Atom Term
 ruleHead (Rule x _) = x
 
-ruleBody :: Rule -> [Pat] 
+ruleBody :: Rule -> [Pat]
 ruleBody (Rule _ x) = x
 
 eitherTerm :: (Var -> a) -> (Con -> a) -> Term -> a
@@ -116,7 +119,7 @@ eitherTerm _ g (Con y) = g y
 
 
 unifyAtom :: (Functor m, Monad m) => Subst -> Atom Term -> Fact -> m Subst
-unifyAtom s (Atom b ps) (Atom h cs) 
+unifyAtom s (Atom b ps) (Atom h cs)
     | h == b    = unifyList s ps cs
     | otherwise = fail "predicate mismatch"
 
@@ -134,21 +137,21 @@ unifyList s _ _ = fail "arity mismatch"
 
 -- f could be State Datalog
 class Monad f => Backend f where
-  
-  -- the list of all facts, including derived rules 
+
+  -- the list of all facts, including derived rules
   facts :: f [Fact]
-  
-  -- the list of all facts for the given name 
+
+  -- the list of all facts for the given name
   factsFor :: Name -> f [Fact]
-  factsFor n = liftM (filter (\x -> atomName x == n)) facts 
+  factsFor n = liftM (filter (\x -> atomName x == n)) facts
 
   factsForId :: Int -> f [Fact]
-  factsForId n = liftM (filter (\x -> atomId x == n)) facts 
+  factsForId n = liftM (filter (\x -> atomId x == n)) facts
 
   -- the list of all rules
   rules :: f [Rule]
 
-  -- the list of all rules for a given table 
+  -- the list of all rules for a given table
   rulesFor :: Name -> f [Rule]
   rulesFor n = liftM (filter (\r -> atomName (ruleHead r) == n)) rules
 
@@ -159,15 +162,15 @@ class Monad f => Backend f where
   -- only memoize facts for the given table
   -- memo :: Name -> f ()
 
-  -- hint to the backend that it should memoize derived facts for the given Name 
-  memoAll :: f () 
+  -- hint to the backend that it should memoize derived facts for the given Name
+  memoAll :: f ()
 
-  -- returns the list of facts for which the assertion holds, 
+  -- returns the list of facts for which the assertion holds,
   -- or empty list if no facts unify with the given query
   query :: Atom Term -> f [Fact]
 
   -- add new facts and rules to knowledge base
-  declare :: Datalog -> f () 
+  declare :: Datalog -> f ()
 
   -- stash the results of a query, for possibly inclusion in the edb
   -- stash :: QueryResult -> f ()
