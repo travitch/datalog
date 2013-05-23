@@ -12,8 +12,9 @@ module Database.Datalog.REPL.Datalog
   ) where
 
 
-import Data.Hashable
-import Control.Monad.State
+import Data.Hashable hiding ( combine )
+import Control.Monad ( liftM )
+import Control.Monad.Trans.State
 import Data.Map (Map)
 import Data.Maybe
 import Data.Text hiding (map,concatMap)

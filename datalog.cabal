@@ -42,17 +42,17 @@ library
   ghc-options: -Wall -auto-all
   ghc-prof-options: -auto-all
 
-executable repl
+executable datalog-repl
+  default-language: Haskell2010
   main-is: repl.hs
   hs-source-dirs: src
   ghc-options: -Wall -auto-all
   build-depends: base == 4.*,
                  containers,
-                 datalog,
+                 datalog == 0.1.0.0,
                  failure,
                  hashable,
                  haskeline,
-                 mtl,
                  parsec,
                  pretty,
                  text,

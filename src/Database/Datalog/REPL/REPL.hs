@@ -8,7 +8,9 @@ module Database.Datalog.REPL.REPL
     , repl
     ) where
 
-import Control.Monad.State
+import Control.Monad ( liftM )
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State
 import Data.IORef
 import Data.Monoid
 import Database.Datalog.REPL.Backend

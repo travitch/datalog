@@ -22,7 +22,7 @@ import qualified Data.Map as M
 import Data.Map (Map)
 
 import Control.Applicative ((<$>))
-import Control.Monad.State
+import Control.Monad ( forM_, when )
 
 import Data.Either (partitionEithers)
 
@@ -38,13 +38,13 @@ type P = Parsec Text Env
 instance (Monad m) => Stream Text m Char where
     uncons = return . T.uncons
 
-data Env = Env 
+data Env = Env
     { envConMap :: Map String Con
     , envNextFree :: !Id
     } deriving (Show)
 
 initialEnv :: Env
-initialEnv = Env { envNextFree = 0, envConMap = M.empty } 
+initialEnv = Env { envNextFree = 0, envConMap = M.empty }
 
 fresh :: P Int
 fresh = do
@@ -61,7 +61,7 @@ mkCon k = do
         Nothing -> do
             i <- fresh
             let result = C i k
-            modifyState $ \env -> env { envConMap = M.insert k result m } 
+            modifyState $ \env -> env { envConMap = M.insert k result m }
             return result
 
 -- parser
@@ -85,7 +85,7 @@ neg :: P ()
 neg = (string "\\+" <|> string "~") >> return ()
 
 term :: P Term
-term =  Var <$> var 
+term =  Var <$> var
     <|> Con <$> con
 
 
@@ -105,7 +105,7 @@ close :: P ()
 close = (spaces >> char ')' >> return ()) <?> ")"
 
 betweenParens :: P a -> P a
-betweenParens = between open close 
+betweenParens = between open close
 
 spaced :: P a -> P a
 spaced = between spaces spaces
@@ -118,7 +118,7 @@ atom t = do
 
 pat :: P Pat
 pat = do { neg; spaces; Not <$> atom term } <|> Pat <$> atom term
-          
+
 fact :: P (Atom Con)
 fact = atom con
   <?> "fact"
@@ -138,10 +138,10 @@ rule = do
 
 safe :: Rule -> P Rule
 safe rule@(Rule head body) = do
-        forM_ headVars $ \v -> 
+        forM_ headVars $ \v ->
             when (v `notElem` bodyVars) $ do
                 unexpected $ "variable " ++ show (varName v) ++ " appears in head, but not occur positively in body"
-        forM_ subVars $ \v -> 
+        forM_ subVars $ \v ->
             when (v `notElem` bodyVars) $ do
                 unexpected $ "variable " ++ show (varName v) ++ " appears in a negated subgoal, but not occur positively in body"
         return rule
@@ -159,12 +159,12 @@ safe rule@(Rule head body) = do
 
 statement :: P (Either Fact Rule)
 statement = try (Left <$> fact)
-            <|> (Right <$> rule) 
+            <|> (Right <$> rule)
 lineSep :: P ()
 lineSep = spaced period <?> "."
 
 statements :: P ([Fact],[Rule])
-statements = do 
+statements = do
     spaces
     result <- partitionEithers <$> statement `sepEndBy` lineSep
     eof
