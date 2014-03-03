@@ -29,11 +29,11 @@ data WorkInfo = EID !Int -- id
               deriving (Eq, Ord, Show)
 
 instance Hashable WorkInfo where
-  hash (EID i) = 1 `combine` hash i
-  hash (EN n) = 2 `combine` hash n
-  hash (EP p) = 3 `combine` hash p
-  hash (J j) = 4 `combine` hash j
-  hash (EA a) = 5 `combine` hash a
+  hashWithSalt s (EID i) = s `hashWithSalt` i `hashWithSalt` (1 :: Int)
+  hashWithSalt s (EN n) = s `hashWithSalt` n `hashWithSalt` (2 :: Int)
+  hashWithSalt s (EP p) = s `hashWithSalt` p `hashWithSalt` (3 :: Int)
+  hashWithSalt s (J j) = s `hashWithSalt` j `hashWithSalt` (4 :: Int)
+  hashWithSalt s (EA a) = s `hashWithSalt` a `hashWithSalt` (5 :: Int)
 
 db1 :: Maybe (Database WorkInfo)
 db1 = makeDatabase $ do

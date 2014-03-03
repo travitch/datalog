@@ -21,7 +21,8 @@ module Database.Datalog.Database (
   ) where
 
 import Control.Failure
-import Control.Monad.State.Strict
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State.Strict
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
@@ -43,7 +44,7 @@ newtype Tuple a = Tuple { unTuple ::  [a] }
                 deriving (Eq, Show)
 
 instance (Hashable a) => Hashable (Tuple a) where
-  hash (Tuple es) = hash es
+  hashWithSalt s (Tuple es) = s `hashWithSalt` es
 
 -- | A relation whose elements are fixed-length lists of a
 -- user-defined type.  This is only used internally and is not exposed

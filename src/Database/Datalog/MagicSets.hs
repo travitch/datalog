@@ -9,6 +9,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
 import Data.List ( foldl' )
+import Data.Maybe ( fromMaybe )
 import Data.Monoid
 import Data.Sequence ( Seq, (><), ViewL(..) )
 import qualified Data.Sequence as S
@@ -114,7 +115,7 @@ magicSetsRules q rs =
             -- Already processed this binding pattern
             Just _ -> transformRules rest generated
             Nothing -> do
-              let matchingRules = HM.lookupDefault (error "No rules for pattern") (queryPatternRelation elt) rawRules
+              let matchingRules = fromMaybe (error "No rules for pattern") $ HM.lookup (queryPatternRelation elt) rawRules
               (magic, newWork) <- foldM (magicTransform elt) (mempty, mempty) matchingRules
               transformRules (rest >< newWork) (HM.insert elt magic generated)
 
@@ -244,7 +245,8 @@ data QueryPattern = QueryPattern { queryPatternRelation :: Relation
                   deriving (Eq, Show)
 
 instance Hashable QueryPattern where
-  hash (QueryPattern r bs) = hash r `combine` hash bs
+  hashWithSalt s (QueryPattern r bs) =
+    s `hashWithSalt` r `hashWithSalt` bs
 
 hasBinding :: QueryPattern -> Bool
 hasBinding (QueryPattern _ bs) = any (==B) (bindingPattern bs)

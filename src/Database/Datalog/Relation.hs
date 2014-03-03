@@ -34,5 +34,7 @@ instance Show Relation where
 -- translation
 
 instance Hashable Relation where
-  hash (Relation t) = 99 `combine` hash t
-  hash (MagicRelation p t) = 2 `combine` hash t `combine` hash p
+  hashWithSalt s (Relation t) =
+    s `hashWithSalt` t `hashWithSalt` (99 :: Int)
+  hashWithSalt s (MagicRelation p t) =
+    s `hashWithSalt` p `hashWithSalt` (2 :: Int)

@@ -4,15 +4,20 @@
 name:                datalog
 version:             0.1.0.0
 synopsis:            An implementation of datalog in Haskell
--- description:
 license:             BSD3
 license-file:        LICENSE
 author:              Tristan Ravitch
 maintainer:          travitch@cs.wisc.edu
--- copyright:
 category:            Database
 build-type:          Simple
 cabal-version:       >=1.10
+description: This is an implementation of datalog in pure Haskell.
+             It is implemented as a library and can be used from within
+             any Haskell application.  As a consequence, it supports both
+             standard Datalog operations and arbitrary predicates written
+             in Haskell.
+             .
+             One day it will have a command-line program as well.
 
 library
   default-language: Haskell2010
@@ -25,21 +30,51 @@ library
                    Database.Datalog.Relation
                    Database.Datalog.Rules
                    Database.Datalog.Stratification
-  build-depends: base > 3 && < 5, containers, unordered-containers, hashable,
-                 failure, text, mtl, vector
+  build-depends: base == 4.*,
+                 containers,
+                 unordered-containers,
+                 hashable,
+                 failure,
+                 text,
+                 transformers >= 0.3,
+                 vector >= 0.9
   hs-source-dirs: src
-  ghc-options: -Wall
+  ghc-options: -Wall -auto-all
   ghc-prof-options: -auto-all
+
+executable datalog-repl
+  default-language: Haskell2010
+  main-is: repl.hs
+  hs-source-dirs: src
+  ghc-options: -Wall -auto-all
+  build-depends: base == 4.*,
+                 containers,
+                 datalog == 0.1.0.0,
+                 failure,
+                 hashable,
+                 haskeline,
+                 parsec,
+                 pretty,
+                 text,
+                 transformers,
+                 unordered-containers,
+                 vector
 
 test-suite NQueensTest
   default-language: Haskell2010
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: NQueens.hs
-  ghc-options: -Wall
+  ghc-options: -Wall -auto-all
   ghc-prof-options: -auto-all
-  build-depends: datalog, base > 3 && < 5, text, containers, hashable,
-                 test-framework, test-framework-hunit, HUnit
+  build-depends: datalog == 0.1.0.0,
+                 base == 4.*,
+                 text,
+                 containers,
+                 hashable,
+                 test-framework,
+                 test-framework-hunit,
+                 HUnit
 
 test-suite AncestorTest
   default-language: Haskell2010
@@ -48,8 +83,13 @@ test-suite AncestorTest
   main-is: AncestorTest.hs
   ghc-options: -Wall
   ghc-prof-options: -auto-all
-  build-depends: datalog, base > 3 && < 5, text, containers,
-                 test-framework, test-framework-hunit, HUnit
+  build-depends: datalog == 0.1.0.0,
+                 base == 4.*,
+                 text,
+                 containers,
+                 test-framework,
+                 test-framework-hunit,
+                 HUnit
 
 test-suite WorksForTest
   default-language: Haskell2010
@@ -58,5 +98,15 @@ test-suite WorksForTest
   main-is: WorksForTest.hs
   ghc-options: -Wall
   ghc-prof-options: -auto-all
-  build-depends: datalog, base > 3 && < 5, text, containers, hashable,
-                 test-framework, test-framework-hunit, HUnit
+  build-depends: datalog == 0.1.0.0,
+                 base == 4.*,
+                 text,
+                 containers,
+                 hashable,
+                 test-framework,
+                 test-framework-hunit,
+                 HUnit
+
+source-repository head
+  type: git
+  location: git://github.com/travitch/datalog.git
