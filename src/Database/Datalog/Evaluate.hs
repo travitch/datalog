@@ -133,8 +133,8 @@ applyRule :: (Eq a, Hashable a, Show a)
              => Database a -> Rule a -> ST s [Bindings s a]
 applyRule db r = do
   -- We need to substitute the ΔT table in for *one* occurrence of the
-  -- T relation in the rule body at a time.  It must be substituted in at
-  -- *each* position where T appears.
+  -- T relation in the rule body at a time.  It must be substituted in
+  -- at *each* position where T appears.
   case any (referencesRelation hr) b of
     -- If the relation does not appear in the body at all, we don't
     -- need to do the delta substitution.
