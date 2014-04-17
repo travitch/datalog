@@ -9,6 +9,8 @@ module Database.Datalog (
   QueryPlan,
   DatalogError(..),
   Query,
+  Literal,
+  Clause,
   Failure,
 
   -- * Building the IDB

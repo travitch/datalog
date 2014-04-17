@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Main ( main ) where
 
 import qualified Control.Monad.Catch as E
@@ -10,7 +11,6 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Sequence ( Seq, (|>) )
 import qualified Data.Sequence as Seq
-import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Typeable ( Typeable )
 import qualified System.Console.Haskeline as HL
@@ -86,6 +86,7 @@ litToString (C.LVString s) = s
 pleatM :: (Monad m, F.Foldable f) => a -> f b -> (a -> b -> m a) -> m a
 pleatM seed elts f = F.foldlM f seed elts
 
+evaluateQuery :: C.Clause C.AnyValue -> StateT ReplState IO [[String]]
 evaluateQuery (C.Clause name vals) = do
   cs <- gets commands
   db <- makeDatabase $ do
@@ -106,11 +107,54 @@ evaluateQuery (C.Clause name vals) = do
         _ -> return a
     return ()
   queryDatabase db $ do
-    _ <- pleatM M.empty cs $ \c -> do
-      undefined
-    return undefined -- Make the query here
+    _ <- pleatM M.empty cs $ \ !a c -> do
+      case c of
+        C.AddRule h@(C.Clause headRel headVals) body -> do
+          a1 <- checkArityDefs a h
+          a2 <- F.foldlM checkArityDefs a1 body
+          hr <- inferencePredicate (T.pack headRel)
+          let headTerms = map toTerm headVals
+              bodies = map toBodyClause body
+          assertRule (hr, headTerms) bodies
+          return a2
+        _ -> return a
+    qrel <- inferencePredicate (T.pack name)
+    issueQuery qrel (map toTerm vals)
+
+toBodyClause :: C.Clause C.AnyValue -> QueryBuilder ReplM String (Literal Clause String)
+toBodyClause c@(C.Clause rel vals) = do
+  checkArity c
+  r <- inferencePredicate (T.pack rel)
+  lit r (map toTerm vals)
+
+toTerm :: C.AnyValue -> Term String
+toTerm (C.AVVariable v) = LogicVar (T.pack v)
+toTerm (C.AVLiteral (C.LVString l)) = Atom l
+
+checkArityDefs :: M.Map String (Relation, Int)
+                  -> C.Clause C.AnyValue
+                  -> QueryBuilder ReplM String (M.Map String (Relation, Int))
+checkArityDefs defs c@(C.Clause rel vals) = do
+  checkArity c
+  case M.lookup rel defs of
+    Nothing -> do
+      r <- inferencePredicate (T.pack rel)
+      return $ M.insert rel (r, length vals) defs
+    Just (_, arity) | arity == length vals -> return defs
+                    | otherwise -> E.throwM $ ArityMismatch2 arity c
+
+checkArity :: C.Clause C.AnyValue -> QueryBuilder ReplM String ()
+checkArity c@(C.Clause rel vals) = do
+  rs <- lift $ gets definedRelations
+  case M.lookup rel rs of
+    Just arity | carity == arity -> return ()
+               | otherwise -> E.throwM $ ArityMismatch2 arity c
+    Nothing -> lift $ modify $ \s -> s { definedRelations = M.insert rel carity (definedRelations s) }
+  where
+    carity = length vals
 
 data EvaluationError = ArityMismatch Int (C.Clause C.LiteralValue)
+                     | ArityMismatch2 Int (C.Clause C.AnyValue)
                      deriving (Eq, Ord, Show, Typeable)
 
 instance E.Exception EvaluationError
