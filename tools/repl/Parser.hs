@@ -77,9 +77,9 @@ pAddRule = do
 
 commandParser :: Parser C.Command
 commandParser =
-  P.choice [ pCommand
-           , pAssertFact
-           , pQuery
+  P.choice [ P.try pCommand
+           , P.try pAssertFact
+           , P.try pQuery
            , pAddRule
            ]
 
