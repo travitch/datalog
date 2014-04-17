@@ -37,4 +37,4 @@ instance Hashable Relation where
   hashWithSalt s (Relation t) =
     s `hashWithSalt` t `hashWithSalt` (99 :: Int)
   hashWithSalt s (MagicRelation p t) =
-    s `hashWithSalt` p `hashWithSalt` (2 :: Int)
+    s `hashWithSalt` p `hashWithSalt` t `hashWithSalt` (2 :: Int)

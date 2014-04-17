@@ -34,9 +34,6 @@ import Data.Text ( Text )
 import Database.Datalog.Errors
 import Database.Datalog.Relation
 
-import Debug.Trace
-debug = flip trace
-
 -- | A wrapper around lists that lets us more easily hide length
 -- checks
 newtype Tuple a = Tuple { unTuple ::  [a] }

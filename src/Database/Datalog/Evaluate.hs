@@ -21,11 +21,7 @@ import Data.Vector.Mutable ( STVector )
 import qualified Data.Vector.Mutable as V
 
 import Database.Datalog.Database
-import Database.Datalog.Errors
 import Database.Datalog.Rules
-
-import Debug.Trace
-debug = flip trace
 
 -- | Bindings are vectors of values.  Each variable in a rule is
 -- assigned an index in the Bindings during the adornment process.

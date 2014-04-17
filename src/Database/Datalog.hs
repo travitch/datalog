@@ -48,10 +48,6 @@ import Database.Datalog.Rules
 import Database.Datalog.MagicSets
 import Database.Datalog.Stratification
 
-import Debug.Trace
-import Text.Printf
-debug = flip trace
-
 -- | A fully-stratified query plan that is ready to be executed.
 data QueryPlan a = QueryPlan (Query a) [[Rule a]]
 
