@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                datalog
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            An implementation of datalog in Haskell
 license:             BSD3
 license-file:        LICENSE
@@ -48,8 +48,8 @@ executable datalog-repl
   hs-source-dirs: tools/repl
   ghc-options: -Wall -auto-all
   build-depends: base == 4.*,
+                 datalog,
                  containers,
-                 datalog == 0.1.0.0,
                  exceptions >= 0.5 && < 0.6,
                  hashable,
                  haskeline,
@@ -67,7 +67,7 @@ test-suite NQueensTest
   main-is: NQueens.hs
   ghc-options: -Wall -auto-all
   ghc-prof-options: -auto-all
-  build-depends: datalog == 0.1.0.0,
+  build-depends: datalog,
                  base == 4.*,
                  text,
                  containers,
@@ -83,7 +83,7 @@ test-suite AncestorTest
   main-is: AncestorTest.hs
   ghc-options: -Wall
   ghc-prof-options: -auto-all
-  build-depends: datalog == 0.1.0.0,
+  build-depends: datalog,
                  base == 4.*,
                  text,
                  containers,
@@ -98,7 +98,7 @@ test-suite WorksForTest
   main-is: WorksForTest.hs
   ghc-options: -Wall
   ghc-prof-options: -auto-all
-  build-depends: datalog == 0.1.0.0,
+  build-depends: datalog,
                  base == 4.*,
                  text,
                  containers,

@@ -86,7 +86,7 @@ db1 = makeDatabase $ do
   jobExceptions <- addRelation "jobExceptions" 2
   assertFact jobExceptions [ EID 4, J "PC Support" ]
 
-q1 :: (Failure DatalogError m) => QueryBuilder m WorkInfo (Query WorkInfo)
+q1 :: QueryBuilder Maybe WorkInfo (Query WorkInfo)
 q1 = do
   employee <- relationPredicateFromName "employee"
   bossOf <- relationPredicateFromName "bossOf"
@@ -129,7 +129,7 @@ t2 = do
                         , [EN "Lilian", EN "Bob"]
                         ]
 
-q2 :: (Failure DatalogError m) => QueryBuilder m WorkInfo (Query WorkInfo)
+q2 :: QueryBuilder Maybe WorkInfo (Query WorkInfo)
 q2 = do
   employee <- relationPredicateFromName "employee"
   bossOf <- relationPredicateFromName "bossOf"
@@ -166,7 +166,7 @@ t3 = do
                         ]
 
 
-q3 :: (Failure DatalogError m) => QueryBuilder m WorkInfo (Query WorkInfo)
+q3 :: QueryBuilder Maybe WorkInfo (Query WorkInfo)
 q3 = do
   employee <- relationPredicateFromName "employee"
   bossOf <- relationPredicateFromName "bossOf"

@@ -21,7 +21,8 @@ tests = [ testGroup "t1" [ testCase "4queens" t4
 
 type Position = (Int, Int)
 
-dbN :: (Failure DatalogError m) => Int -> m (Database Position)
+-- dbN :: (Failure DatalogError m) => Int -> m (Database Position)
+dbN :: Int -> IO (Database Position)
 dbN n = makeDatabase $ do
   let posTuples = [ (x, y) | x <- [1..n], y <- [1..n] ]
   position <- addRelation "position" 1
