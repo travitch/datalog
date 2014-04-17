@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts, BangPatterns #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | FIXME: Change the adornment/query building process such that
 -- conditional clauses are always processed last.  This is necessary
 -- so that all variables are bound.
@@ -35,7 +36,7 @@ module Database.Datalog.Rules (
   partitionRules
   ) where
 
-import Control.Failure
+import qualified Control.Monad.Catch as E
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 import Data.Function ( on )
@@ -47,7 +48,7 @@ import Data.Maybe ( mapMaybe )
 import Data.Monoid
 import Data.Text ( Text )
 import qualified Data.Text as T
-import Text.Printf
+import Text.Printf ( printf )
 
 import Database.Datalog.Adornment
 import Database.Datalog.Relation
@@ -65,7 +66,7 @@ data QueryState a = QueryState { intensionalDatabase :: Database a
 -- | The Monad in which queries are constructed and rules are declared
 type QueryBuilder m a = StateT (QueryState a) m
 
-nextConditionalId :: (Failure DatalogError m) => QueryBuilder m a Int
+nextConditionalId :: (E.MonadThrow m) => QueryBuilder m a Int
 nextConditionalId = do
   s <- get
   let cid = conditionalIdSource s
@@ -169,13 +170,13 @@ instance (Hashable a, Hashable (ctype a)) => Hashable (Literal ctype a) where
   hashWithSalt s (ConditionalClause cid _ ts vm) =
     s `hashWithSalt` cid `hashWithSalt` ts `hashWithSalt` HM.size vm
 
-lit :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
+lit :: (E.MonadThrow m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
 lit p ts = return $ Literal $ Clause p ts
 
-negLit :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
+negLit :: (E.MonadThrow m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
 negLit p ts = return $ NegatedLiteral $ Clause p ts
 
-cond1 :: (Failure DatalogError m, Eq a, Hashable a)
+cond1 :: (E.MonadThrow m, Eq a, Hashable a)
          => (a -> Bool)
          -> Term a
          -> QueryBuilder m a (Literal Clause a)
@@ -183,7 +184,7 @@ cond1 p t = do
   cid <- nextConditionalId
   return $ ConditionalClause cid (\[x] -> p x) [t] mempty
 
-cond2 :: (Failure DatalogError m, Eq a, Hashable a)
+cond2 :: (E.MonadThrow m, Eq a, Hashable a)
          => (a -> a -> Bool)
          -> (Term a, Term a)
          -> QueryBuilder m a (Literal Clause a)
@@ -192,7 +193,7 @@ cond2 p (t1, t2) = do
   return $ ConditionalClause cid (\[x1, x2] -> p x1 x2) [t1, t2] mempty
 
 
-cond3 :: (Failure DatalogError m, Eq a, Hashable a)
+cond3 :: (E.MonadThrow m, Eq a, Hashable a)
          => (a -> a -> a -> Bool)
          -> (Term a, Term a, Term a)
          -> QueryBuilder m a (Literal Clause a)
@@ -200,7 +201,7 @@ cond3 p (t1, t2, t3) = do
   cid <- nextConditionalId
   return $ ConditionalClause cid (\[x1, x2, x3] -> p x1 x2 x3) [t1, t2, t3] mempty
 
-cond4 :: (Failure DatalogError m, Eq a, Hashable a)
+cond4 :: (E.MonadThrow m, Eq a, Hashable a)
          => (a -> a -> a -> a -> Bool)
          -> (Term a, Term a, Term a, Term a)
          -> QueryBuilder m a (Literal Clause a)
@@ -208,7 +209,7 @@ cond4 p (t1, t2, t3, t4) = do
   cid <- nextConditionalId
   return $ ConditionalClause cid (\[x1, x2, x3, x4] -> p x1 x2 x3 x4) [t1, t2, t3, t4] mempty
 
-cond5 :: (Failure DatalogError m, Eq a, Hashable a)
+cond5 :: (E.MonadThrow m, Eq a, Hashable a)
          => (a -> a -> a -> a -> a -> Bool)
          -> (Term a, Term a, Term a, Term a, Term a)
          -> QueryBuilder m a (Literal Clause a)
@@ -247,7 +248,7 @@ infixr 0 |-
 --
 -- FIXME: Check to make sure that clause arities match their declared
 -- schema.
-(|-), assertRule :: (Failure DatalogError m)
+(|-), assertRule :: (E.MonadThrow m)
         => (Relation, [Term a]) -- ^ The rule head
         -> [QueryBuilder m a (Literal Clause a)] -- ^ Body literals
         -> QueryBuilder m a ()
@@ -289,18 +290,20 @@ freshenVars l (cs, ixSrc) =
 
 -- | Retrieve a Relation handle from the IDB.  If the Relation does
 -- not exist, an error will be raised.
-relationPredicateFromName :: (Failure DatalogError m)
-                             => Text -> QueryBuilder m a Relation
+relationPredicateFromName :: (E.MonadThrow m)
+                             => Text
+                             -> QueryBuilder m a Relation
 relationPredicateFromName name = do
   let rel = Relation name
   idb <- gets intensionalDatabase
   case rel `elem` databaseRelations idb of
-    False -> lift $ failure (NoRelationError rel)
+    False -> lift $ E.throwM (NoRelationError rel)
     True -> return rel
 
 -- | Create a new predicate that will be referenced by an EDB rule
-inferencePredicate :: (Failure DatalogError m)
-                      => Text -> QueryBuilder m a Relation
+inferencePredicate :: (E.MonadThrow m)
+                      => Text
+                      -> QueryBuilder m a Relation
 inferencePredicate = return . Relation
 
 -- | A partial tuple records the atoms in a tuple (with their indices
@@ -336,7 +339,7 @@ ruleRelations (Rule h bcs _) = adornedClauseRelation h : mapMaybe literalClauseR
 
 -- | Turn a Clause into a Query.  This is meant to be the last
 -- statement in a QueryBuilder monad.
-issueQuery :: (Failure DatalogError m) => Relation -> [Term a] -> QueryBuilder m a (Query a)
+issueQuery :: (E.MonadThrow m) => Relation -> [Term a] -> QueryBuilder m a (Query a)
 issueQuery r ts = return $ Query $ Clause r ts
 
 
@@ -345,7 +348,7 @@ issueQuery r ts = return $ Query $ Clause r ts
 --
 -- Rules are adorned (marking each variable as Free or Bound as they
 -- appear) before being returned.
-runQuery :: (Failure DatalogError m, Eq a, Hashable a)
+runQuery :: (E.MonadThrow m, Eq a, Hashable a)
             => QueryBuilder m a (Query a) -> Database a -> m (Query a, [(Clause a, [Literal Clause a])])
 runQuery qm idb = do
   (q, QueryState _ _ rs) <- runStateT qm (QueryState idb 0 [])

@@ -34,7 +34,7 @@ library
                  containers,
                  unordered-containers,
                  hashable,
-                 failure,
+                 exceptions >= 0.5 && < 0.6,
                  text,
                  transformers >= 0.3,
                  vector >= 0.9
@@ -51,7 +51,6 @@ executable datalog-repl
                  containers,
                  datalog == 0.1.0.0,
                  exceptions >= 0.5 && < 0.6,
-                 failure,
                  hashable,
                  haskeline,
                  parsec,

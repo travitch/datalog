@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, FlexibleContexts #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module Database.Datalog.Database (
   Relation,
   Database,
@@ -20,7 +20,7 @@ module Database.Datalog.Database (
   databaseHasDelta
   ) where
 
-import Control.Failure
+import qualified Control.Monad.Catch as E
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 import Data.Hashable
@@ -76,19 +76,19 @@ type DatabaseBuilder m a = StateT (Database a) m
 
 -- | Make a new fact Database in a DatabaseBuilder monad.  It can
 -- fail, and errors will be returned however the caller indicates.
-makeDatabase :: (Failure DatalogError m)
+makeDatabase :: (E.MonadThrow m)
                 => DatabaseBuilder m a () -> m (Database a)
 makeDatabase b = execStateT b (Database mempty)
 
 -- | Add a relation to the 'Database'.  If the relation exists, an
 -- error will be raised.  The function returns a 'RelationHandle' that
 -- can be used in conjuction with 'addTuple'.
-addRelation :: (Failure DatalogError m, Eq a, Hashable a)
+addRelation :: (E.MonadThrow m, Eq a, Hashable a)
                => Text -> Int -> DatabaseBuilder m a Relation
 addRelation name arity = do
   Database m <- get
   case HM.lookup rel m of
-    Just _ -> lift $ failure (RelationExistsError name)
+    Just _ -> lift $ E.throwM (RelationExistsError name)
     Nothing -> do
       let r = DBRelation arity rel mempty mempty mempty mempty
       put $! Database $! HM.insert rel r m
@@ -98,7 +98,7 @@ addRelation name arity = do
 
 -- | Add a tuple to the named 'Relation' in the database.  If the
 -- tuple is already present, the original 'Database' is unchanged.
-assertFact :: (Failure DatalogError m, Eq a, Hashable a)
+assertFact :: (E.MonadThrow m, Eq a, Hashable a)
             => Relation -> [a] -> DatabaseBuilder m a ()
 assertFact relHandle tup = do
   db@(Database m) <- get
@@ -179,11 +179,10 @@ databaseRelations :: Database a -> [Relation]
 databaseRelations (Database m) = HM.keys m
 
 -- | Get all of the tuples for the given predicate/relation in the database.
-dataForRelation :: (Failure DatalogError m)
-                        => Database a -> Relation -> m [Tuple a]
+dataForRelation :: (E.MonadThrow m) => Database a -> Relation -> m [Tuple a]
 dataForRelation (Database m) rel =
   case HM.lookup rel m of
-    Nothing -> failure $ NoRelationError rel
+    Nothing -> E.throwM $ NoRelationError rel
     Just r -> return $ relationData r
 
 databaseHasDelta :: Database a -> Bool
@@ -196,9 +195,9 @@ databaseHasDelta (Database db) =
 -- Signals failure (according to @m@) if the length is invalid.
 --
 -- FIXME: It would also be nice to be able to check the column type...
-toWrappedTuple :: (Failure DatalogError m)
+toWrappedTuple :: (E.MonadThrow m)
                   => DBRelation a -> [a] -> DatabaseBuilder m a (Tuple a)
 toWrappedTuple rel tup =
   case relationArity rel == length tup of
-    False -> lift $ failure (SchemaError (relationName rel))
+    False -> lift $ E.throwM (SchemaError (relationName rel))
     True -> return $! Tuple tup

@@ -1,8 +1,8 @@
-{-# LANGUAGE FlexibleContexts, BangPatterns #-}
+{-# LANGUAGE BangPatterns #-}
 module Database.Datalog.MagicSets ( magicSetsRules, seedDatabase ) where
 
-import Control.Failure
 import Control.Monad ( MonadPlus(..), foldM )
+import qualified Control.Monad.Catch as E
 import Data.Hashable
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
@@ -28,7 +28,7 @@ debug = flip trace
 -- Rel[FFF] relation version because we don't transform those into
 -- versions with bound variables
 
-seedDatabase :: (Failure DatalogError m, Eq a, Hashable a, Show a)
+seedDatabase :: (E.MonadThrow m, Eq a, Hashable a, Show a)
                 => Database a
                 -> [Rule a]
                 -> Query a
@@ -55,7 +55,7 @@ seedDatabase db0 rs (Query (Clause (Relation rname) ts)) bindings = do
         Atom a -> return (a : tacc, B : bacc)
         BindVar name ->
           case lookup name bindings of
-            Nothing -> failure (NoVariableBinding name)
+            Nothing -> E.throwM (NoVariableBinding name)
             Just v -> return (v : tacc, B : bacc)
         LogicVar _ -> return (tacc, F : bacc)
         FreshVar _ -> return (tacc, F : bacc)
@@ -83,7 +83,7 @@ definesRelation r (Rule ac _ _) = adornedClauseRelation ac == r
 -- > (http://www.sciencedirect.com/science/article/pii/074310669190030S)
 --
 -- that handles magic for negated literals.
-magicSetsRules :: (Failure DatalogError m, Hashable a, Eq a, Show a)
+magicSetsRules :: (E.MonadThrow m, Hashable a, Eq a, Show a)
                   => Query a -- ^ The goal query
                   -> [(Clause a, [Literal Clause a])] -- ^ The user-provided rules
                   -> m [Rule a]
@@ -124,7 +124,7 @@ magicSetsRules q rs =
 -- head area *always* bound).  The QueryPattern is separate and is
 -- only used to compute other QueryPatterns for the worklist and to
 -- determine whether or not magic needs to be applied.
-    magicTransform :: (Failure DatalogError m, Hashable a, Eq a, Show a)
+    magicTransform :: (E.MonadThrow m, Hashable a, Eq a, Show a)
                       => QueryPattern
                       -> ([((Clause a, [Literal Clause a]), [QueryPattern])], Seq QueryPattern)
                       -> (Clause a, [Literal Clause a])
@@ -287,7 +287,7 @@ collectNegatedRelations (_, cs) acc =
 -- bound in the query are bound in the associated rules.
 --
 -- Note: all variables in the head must appear in the body
-adornRule :: (Failure DatalogError m, Eq a, Hashable a)
+adornRule :: (E.MonadThrow m, Eq a, Hashable a)
               => (Clause a, [Literal Clause a]) -> m (Rule a)
 adornRule (hd, lits) = do
   (vmap, lits') <- mapAccumM adornLiteral mempty lits
@@ -297,9 +297,9 @@ adornRule (hd, lits) = do
   -- must appear in a non-negative literal
   case headVars `HS.difference` (HS.fromList (HM.keys allVars)) == mempty of
     True -> return $! Rule hd' lits' allVars
-    False -> failure RangeRestrictionViolation
+    False -> E.throwM RangeRestrictionViolation
 
-adornLiteral :: (Failure DatalogError m, Eq a, Hashable a)
+adornLiteral :: (E.MonadThrow m, Eq a, Hashable a)
                 => HashMap (Term a) Int
                 -> Literal Clause a
                 -> m (HashMap (Term a) Int, Literal AdornedClause a)

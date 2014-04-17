@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns, ScopedTypeVariables #-}
 -- | This module defines the evaluation strategy of the library.
 --
 -- It currently uses a bottom-up semi-naive evaluator.
@@ -8,7 +8,7 @@ module Database.Datalog.Evaluate (
   ) where
 
 import Control.Applicative
-import Control.Failure
+import qualified Control.Monad.Catch as E
 import Control.Monad ( foldM, liftM )
 import Control.Monad.ST.Strict
 import Data.Graph
@@ -66,7 +66,7 @@ newtype Bindings s a = Bindings (STVector s a)
 --
 -- While collecting all of the new tuples (see projectLiteral), a new
 -- Δ table is generated.
-applyRuleSet :: (Failure DatalogError m, Eq a, Hashable a, Show a)
+applyRuleSet :: (E.MonadThrow m, Eq a, Hashable a, Show a)
                 => Database a -> [Rule a] -> m (Database a)
 applyRuleSet _ [] = error "applyRuleSet: Empty rule set not possible"
 applyRuleSet db rss@(r:_) = return $ runST $ do

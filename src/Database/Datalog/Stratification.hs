@@ -1,7 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
 module Database.Datalog.Stratification ( stratifyRules ) where
 
-import Control.Failure
+import qualified Control.Monad.Catch as E
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
 import Data.HashSet ( HashSet )
@@ -17,10 +16,10 @@ import Database.Datalog.Rules
 
 -- | Stratify the input rules and magic rules; the rules should be
 -- processed to a fixed-point in this order
-stratifyRules :: (Failure DatalogError m) => [Rule a] -> m [[Rule a]]
+stratifyRules :: (E.MonadThrow m) => [Rule a] -> m [[Rule a]]
 stratifyRules rs =
   case all hasNoInternalNegation comps of
-    False -> failure StratificationError
+    False -> E.throwM StratificationError
     True -> return $ IM.elems $ foldr (assignRule stratumNumbers) mempty rs
   where
     (ctxts, negatedEdges) = makeRuleDependencies rs
