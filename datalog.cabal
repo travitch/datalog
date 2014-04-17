@@ -50,6 +50,7 @@ executable datalog-repl
   build-depends: base == 4.*,
                  containers,
                  datalog == 0.1.0.0,
+                 exceptions >= 0.5 && < 0.6,
                  failure,
                  hashable,
                  haskeline,

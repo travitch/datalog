@@ -24,6 +24,7 @@ pCommand :: Parser Command
 pCommand = do
   startCommand
   P.choice [ C.DumpFacts <$ P.string "facts"
+           , C.Quit <$ P.string "quit"
            ]
 
 relationName :: Parser String
