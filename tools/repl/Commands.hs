@@ -21,4 +21,6 @@ data Command = Quit
              | Query (Clause AnyValue)
              | AddRule (Clause AnyValue) [Clause AnyValue]
              | DumpFacts
+             | DumpRules
+             | Help
              deriving (Eq, Ord, Show)

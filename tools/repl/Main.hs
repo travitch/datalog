@@ -57,6 +57,13 @@ loop = do
               C.AssertFact cl -> HL.outputStrLn (clauseString cl)
               _ -> return ()
           loop
+        Right C.DumpRules -> do
+          cs <- lift $ gets commands
+          F.forM_ cs $ \c -> do
+            case c of
+              C.AddRule ruleHead ruleBody -> HL.outputStrLn (ruleString ruleHead ruleBody)
+              _ -> return ()
+          loop
         Right (C.Query qc@(C.Clause name _)) -> do
           erows <- lift $ E.try (evaluateQuery qc)
           case erows of
@@ -74,6 +81,19 @@ loop = do
         Right c -> do
           lift $ modify $ \s -> s { commands = commands s |> c }
           loop
+
+ruleString :: C.Clause C.AnyValue -> [C.Clause C.AnyValue] -> String
+ruleString ruleHead ruleBody =
+  concat [ cstring ruleHead
+         , " :- "
+         , L.intercalate ", " (map cstring ruleBody)
+         ]
+  where
+    cstring (C.Clause name args) =
+      let strs = L.intercalate ", " $ map valToString args
+      in printf "%s(%s)" name strs
+    valToString (C.AVVariable s) = s
+    valToString (C.AVLiteral (C.LVString s)) = s
 
 clauseString :: C.Clause C.LiteralValue -> String
 clauseString (C.Clause name lits) = printf "%s(%s)" name strs
