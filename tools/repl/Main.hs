@@ -61,7 +61,8 @@ loop = do
           cs <- lift $ gets commands
           F.forM_ cs $ \c -> do
             case c of
-              C.AddRule ruleHead ruleBody -> HL.outputStrLn (ruleString ruleHead ruleBody)
+              C.AddRule ruleHead ruleBody ->
+                HL.outputStrLn (ruleString ruleHead ruleBody)
               _ -> return ()
           loop
         Right (C.Query qc@(C.Clause name _)) -> do
