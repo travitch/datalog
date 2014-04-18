@@ -9,6 +9,7 @@ import Control.Monad.Trans.State.Strict ( evalStateT, StateT, modify, gets )
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.Map as M
+import Data.Maybe ( catMaybes )
 import Data.Sequence ( Seq, (|>) )
 import qualified Data.Sequence as Seq
 import qualified Data.Text as T
@@ -80,9 +81,31 @@ loop = do
               loop
         Right C.Quit -> return ()
         Right C.Help -> printHelp >> loop
-        Right c -> do
-          lift $ modify $ \s -> s { commands = commands s |> c }
+        Right c@(C.AssertFact f) -> do
+          ok <- guardArity f
+          case ok of
+            Nothing ->
+              lift $ modify $ \s -> s { commands = commands s |> c }
+            Just err -> HL.outputStrLn err
           loop
+        Right c@(C.AddRule ruleHead ruleBody) -> do
+          hres <- guardArity ruleHead
+          bress <- mapM guardArity ruleBody
+          case catMaybes (hres : bress) of
+            [] -> lift $ modify $ \s -> s { commands = commands s |> c }
+            errs -> HL.outputStrLn (unlines errs)
+          loop
+
+guardArity :: (Show a) => C.Clause a -> HL.InputT ReplM (Maybe String)
+guardArity f@(C.Clause name args) = do
+  rels <- lift $ gets definedRelations
+  case M.lookup name rels of
+    Just arity | length args == arity -> return Nothing
+               | otherwise ->
+                 return $ Just ("Arity mismatch: " ++ show f ++ " should have arity " ++ show arity)
+    Nothing -> do
+      lift $ modify $ \s -> s { definedRelations = M.insert name (length args) (definedRelations s) }
+      return Nothing
 
 printHelp :: HL.InputT ReplM ()
 printHelp =
