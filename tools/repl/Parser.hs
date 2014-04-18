@@ -25,6 +25,7 @@ pCommand = do
   startCommand
   P.choice [ C.DumpFacts <$ P.string "facts"
            , C.DumpRules <$ P.string "rules"
+           , C.Help <$ P.string "help"
            , C.Quit <$ P.string "quit"
            ]
 

@@ -78,9 +78,31 @@ loop = do
                 HL.outputStrLn $ printf "%s(%s)" name s
               loop
         Right C.Quit -> return ()
+        Right C.Help -> printHelp >> loop
         Right c -> do
           lift $ modify $ \s -> s { commands = commands s |> c }
           loop
+
+printHelp :: HL.InputT ReplM ()
+printHelp =
+  HL.outputStrLn $ unlines [ "Datalog REPL"
+                           , ""
+                           , "Commands"
+                           , "  :help - this text"
+                           , "  :quit - exit the repl"
+                           , "  :facts - print all defined facts"
+                           , "  :rules - print all defined rules"
+                           , ""
+                           , "Syntax"
+                           , "  To declare a fact:"
+                           , "    relation1(arg1, arg2)."
+                           , "  To define a rule:"
+                           , "    relation2(X, Y) :- relation1(X, Z), relation1(Z, Y)."
+                           , "  To issue a query:"
+                           , "    relation2(X, Y)?"
+                           , ""
+                           , "  Variables are in all caps.  Literals (atoms) begin with a lowercase letter.  Relation names also begin with a lowercase letter."
+                           ]
 
 ruleString :: C.Clause C.AnyValue -> [C.Clause C.AnyValue] -> String
 ruleString ruleHead ruleBody =
