@@ -69,7 +69,7 @@ pAddRule :: Parser Command
 pAddRule = do
   r <- clause
   _ <- token (P.string ":-")
-  cs <- token clause `P.sepBy` comma
+  cs <- token clause `P.sepBy1` comma
   _ <- token (P.char '.')
   return $ C.AddRule r cs
   where
