@@ -241,7 +241,7 @@ instance (Hashable a) => Hashable (Rule a) where
     s `hashWithSalt` h `hashWithSalt` b `hashWithSalt` HM.size vms
 
 newtype Query a = Query { unQuery :: Clause a }
-
+                deriving (Show)
 infixr 0 |-
 
 -- | Assert a rule
