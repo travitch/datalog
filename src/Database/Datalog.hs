@@ -92,8 +92,7 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
   let q' = bindQuery q bindings
       pt = queryToPartialTuple q'
       p = queryPredicate q'
-  return $! map unTuple $ select edb p pt -- `debug` show edb
-
+  return $! map unTuple $ select edb p pt
 -- Private helpers
 
 -- | Apply the rules in each stratum bottom-up.  Compute a fixed-point
