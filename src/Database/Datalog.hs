@@ -50,6 +50,7 @@ import Database.Datalog.Stratification
 
 -- | A fully-stratified query plan that is ready to be executed.
 data QueryPlan a = QueryPlan (Query a) [[Rule a]]
+                 deriving (Show)
 
 -- | This is a shortcut to build a query plan and execute in one step,
 -- with no bindings provided.  It doesn't make sense to have bindings
