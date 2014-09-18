@@ -1,5 +1,5 @@
 name:                datalog
-version:             0.2.0.1
+version:             0.2.0.2
 synopsis:            An implementation of datalog in Haskell
 license:             BSD3
 license-file:        LICENSE
@@ -13,6 +13,8 @@ description: This is an implementation of datalog in pure Haskell.
              any Haskell application.  As a consequence, it supports both
              standard Datalog operations and arbitrary predicates written
              in Haskell.
+
+extra-source-files: CHANGES.md
 
 library
   default-language: Haskell2010
