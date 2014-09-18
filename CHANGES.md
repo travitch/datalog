@@ -1,3 +1,8 @@
+v0.2.0.1
+--------
+
+* Fix a bug in relation stratification
+
 v0.2.0.0
 --------
 
