@@ -1,6 +1,7 @@
 module Database.Datalog.Stratification ( stratifyRules ) where
 
 import qualified Control.Monad.Catch as E
+import qualified Data.Foldable as F
 import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
 import Data.HashSet ( HashSet )
@@ -33,7 +34,7 @@ stratifyRules rs =
               internalEdges = foldr (isInternalEdge compNodes) mempty vs
           in HS.null $ HS.intersection internalEdges negatedEdges
 
-    stratumNumbers = foldr (computeStratumNumbers negatedEdges) mempty comps
+    stratumNumbers = F.foldl' (computeStratumNumbers negatedEdges) mempty comps
 
 isInternalEdge :: HashSet Relation -> Context -> HashSet (Relation, Relation) -> HashSet (Relation, Relation)
 isInternalEdge compNodes (_, n, tgts) acc =
@@ -63,6 +64,8 @@ assignRule stratumNumbers r = IM.insertWith (++) snum [r]
 computeStratumNumber :: NegatedEdges -> HashMap Relation Int -> Context -> Int
 computeStratumNumber negEdges m (_, r, deps) =
   case deps of
+    -- If this relation has no dependencies, it is in stratum zero and
+    -- can be evaluated first
     [] -> 0
     -- deps is not empty; if a dependency is not present it must be in
     -- this SCC and we can count it as zero because there are no
@@ -79,10 +82,10 @@ computeStratumNumber negEdges m (_, r, deps) =
 -- maximum number of negations reachable from a relation without
 -- encountering a negation (negations within an SCC are impossible).
 computeStratumNumbers :: NegatedEdges
+                         -> HashMap Relation Int
                          -> SCC Context
                          -> HashMap Relation Int
-                         -> HashMap Relation Int
-computeStratumNumbers negEdges comp m =
+computeStratumNumbers negEdges m comp =
   case comp of
     AcyclicSCC c@(r, _, _) -> HM.insert r (computeStratumNumber negEdges m c) m
     CyclicSCC cs ->

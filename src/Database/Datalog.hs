@@ -50,6 +50,7 @@ import Database.Datalog.Stratification
 
 -- | A fully-stratified query plan that is ready to be executed.
 data QueryPlan a = QueryPlan (Query a) [[Rule a]]
+                 deriving (Show)
 
 -- | This is a shortcut to build a query plan and execute in one step,
 -- with no bindings provided.  It doesn't make sense to have bindings
@@ -91,8 +92,7 @@ executeQueryPlan (QueryPlan q strata) idb bindings = do
   let q' = bindQuery q bindings
       pt = queryToPartialTuple q'
       p = queryPredicate q'
-  return $! map unTuple $ select edb p pt -- `debug` show edb
-
+  return $! map unTuple $ select edb p pt
 -- Private helpers
 
 -- | Apply the rules in each stratum bottom-up.  Compute a fixed-point
