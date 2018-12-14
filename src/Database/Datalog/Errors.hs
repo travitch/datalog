@@ -16,6 +16,8 @@ data DatalogError = SchemaError Relation
                   | RangeRestrictionViolation
                   | NonVariableInRuleHead
                   | NoVariableBinding Text
+                  | UnexpectedNegatedLiteral
+                  | UnexpectedConditionalClause
                   deriving (Typeable, Show)
 
 instance Exception DatalogError

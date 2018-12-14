@@ -290,13 +290,17 @@ adornRule :: (E.MonadThrow m, Eq a, Hashable a)
               => (Clause a, [Literal Clause a]) -> m (Rule a)
 adornRule (hd, lits) = do
   (vmap, lits') <- mapAccumM adornLiteral mempty lits
-  (allVars, Literal hd') <- adornLiteral vmap (Literal hd)
-  let headVars = HS.fromList (clauseTerms hd)
-  -- FIXME: This test isn't actually strict enough.  All head vars
-  -- must appear in a non-negative literal
-  case headVars `HS.difference` (HS.fromList (HM.keys allVars)) == mempty of
-    True -> return $! Rule hd' lits' allVars
-    False -> E.throwM RangeRestrictionViolation
+  (allVars, mlit) <- adornLiteral vmap (Literal hd)
+  case mlit of
+    Literal hd' -> do
+      let headVars = HS.fromList (clauseTerms hd)
+      -- FIXME: This test isn't actually strict enough.  All head vars
+      -- must appear in a non-negative literal
+      case headVars `HS.difference` (HS.fromList (HM.keys allVars)) == mempty of
+        True -> return $! Rule hd' lits' allVars
+        False -> E.throwM RangeRestrictionViolation
+    NegatedLiteral {} -> E.throwM UnexpectedNegatedLiteral
+    ConditionalClause {} -> E.throwM UnexpectedConditionalClause
 
 adornLiteral :: (E.MonadThrow m, Eq a, Hashable a)
                 => HashMap (Term a) Int
