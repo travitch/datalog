@@ -63,8 +63,7 @@ test-suite NQueensTest
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: NQueens.hs
-  ghc-options: -Wall -auto-all
-  ghc-prof-options: -auto-all
+  ghc-options: -Wall
   build-depends: datalog,
                  base == 4.*,
                  text,
@@ -80,7 +79,6 @@ test-suite AncestorTest
   type: exitcode-stdio-1.0
   main-is: AncestorTest.hs
   ghc-options: -Wall
-  ghc-prof-options: -auto-all
   build-depends: datalog,
                  base == 4.*,
                  text,
@@ -95,7 +93,6 @@ test-suite WorksForTest
   type: exitcode-stdio-1.0
   main-is: WorksForTest.hs
   ghc-options: -Wall
-  ghc-prof-options: -auto-all
   build-depends: datalog,
                  base == 4.*,
                  text,
