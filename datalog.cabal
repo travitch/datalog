@@ -44,7 +44,7 @@ executable datalog-repl
   main-is: Main.hs
   other-modules: Parser, Commands
   hs-source-dirs: tools/repl
-  ghc-options: -Wall -auto-all
+  ghc-options: -Wall
   build-depends: base == 4.*,
                  datalog,
                  containers,
