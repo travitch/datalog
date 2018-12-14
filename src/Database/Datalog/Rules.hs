@@ -37,23 +37,25 @@ module Database.Datalog.Rules (
   ) where
 
 import qualified Control.Monad.Catch as E
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
-import Data.Function ( on )
-import Data.Hashable
-import Data.HashMap.Strict ( HashMap )
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.State.Strict
+import           Data.Function ( on )
+import           Data.Hashable
+import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.List ( intercalate, groupBy, sortBy )
-import Data.Maybe ( mapMaybe )
-import Data.Monoid
-import Data.Text ( Text )
+import           Data.List ( intercalate, groupBy, sortBy )
+import           Data.Maybe ( mapMaybe )
+import           Data.Monoid
+import           Data.Text ( Text )
 import qualified Data.Text as T
-import Text.Printf ( printf )
+import           Text.Printf ( printf )
 
-import Database.Datalog.Adornment
-import Database.Datalog.Relation
-import Database.Datalog.Errors
-import Database.Datalog.Database
+import           Prelude
+
+import           Database.Datalog.Adornment
+import           Database.Datalog.Relation
+import           Database.Datalog.Errors
+import           Database.Datalog.Database
 
 -- import Debug.Trace
 -- debug = flip trace

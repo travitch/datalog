@@ -7,21 +7,23 @@ module Database.Datalog.Evaluate (
   select
   ) where
 
-import Control.Applicative
+import           Control.Applicative
 import qualified Control.Monad.Catch as E
-import Control.Monad ( foldM, liftM )
-import Control.Monad.ST.Strict
-import Data.Graph
-import Data.Hashable
-import Data.HashMap.Strict ( HashMap )
+import           Control.Monad ( foldM, liftM )
+import           Control.Monad.ST.Strict
+import           Data.Graph
+import           Data.Hashable
+import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.Maybe ( fromMaybe )
-import Data.Monoid
-import Data.Vector.Mutable ( STVector )
+import           Data.Maybe ( fromMaybe )
+import           Data.Monoid
+import           Data.Vector.Mutable ( STVector )
 import qualified Data.Vector.Mutable as V
 
-import Database.Datalog.Database
-import Database.Datalog.Rules
+import           Prelude
+
+import           Database.Datalog.Database
+import           Database.Datalog.Rules
 
 -- | Bindings are vectors of values.  Each variable in a rule is
 -- assigned an index in the Bindings during the adornment process.

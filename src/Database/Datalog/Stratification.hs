@@ -2,18 +2,20 @@ module Database.Datalog.Stratification ( stratifyRules ) where
 
 import qualified Control.Monad.Catch as E
 import qualified Data.Foldable as F
-import Data.HashMap.Strict ( HashMap )
+import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.HashSet ( HashSet )
+import           Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
-import Data.IntMap ( IntMap )
+import           Data.IntMap ( IntMap )
 import qualified Data.IntMap as IM
-import Data.Monoid
-import Data.Graph
+import           Data.Monoid
+import           Data.Graph
 
-import Database.Datalog.Database
-import Database.Datalog.Errors
-import Database.Datalog.Rules
+import           Prelude
+
+import           Database.Datalog.Database
+import           Database.Datalog.Errors
+import           Database.Datalog.Rules
 
 -- | Stratify the input rules and magic rules; the rules should be
 -- processed to a fixed-point in this order

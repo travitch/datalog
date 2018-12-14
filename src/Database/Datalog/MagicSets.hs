@@ -1,28 +1,27 @@
 {-# LANGUAGE BangPatterns #-}
 module Database.Datalog.MagicSets ( magicSetsRules, seedDatabase ) where
 
-import Control.Monad ( MonadPlus(..), foldM )
+import           Control.Monad ( MonadPlus(..), foldM )
 import qualified Control.Monad.Catch as E
-import Data.Hashable
-import Data.HashMap.Strict ( HashMap )
+import           Data.Hashable
+import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.HashSet ( HashSet )
+import           Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
-import Data.List ( foldl' )
-import Data.Maybe ( fromMaybe )
-import Data.Monoid
-import Data.Sequence ( Seq, (><), ViewL(..) )
+import           Data.List ( foldl' )
+import           Data.Maybe ( fromMaybe )
+import           Data.Monoid
+import           Data.Sequence ( Seq, (><), ViewL(..) )
 import qualified Data.Sequence as S
-import Data.Text ( Text )
+import           Data.Text ( Text )
 
-import Database.Datalog.Adornment
-import Database.Datalog.Database
-import Database.Datalog.Errors
-import Database.Datalog.Relation
-import Database.Datalog.Rules
+import           Prelude
 
-import Debug.Trace
-debug = flip trace
+import           Database.Datalog.Adornment
+import           Database.Datalog.Database
+import           Database.Datalog.Errors
+import           Database.Datalog.Relation
+import           Database.Datalog.Rules
 
 -- FIXME: All references to negated relations must refer to the
 -- Rel[FFF] relation version because we don't transform those into

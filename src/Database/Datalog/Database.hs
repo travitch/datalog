@@ -21,18 +21,20 @@ module Database.Datalog.Database (
   ) where
 
 import qualified Control.Monad.Catch as E
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
-import Data.Hashable
-import Data.HashMap.Strict ( HashMap )
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.State.Strict
+import           Data.Hashable
+import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HM
-import Data.HashSet ( HashSet )
+import           Data.HashSet ( HashSet )
 import qualified Data.HashSet as HS
-import Data.Monoid
-import Data.Text ( Text )
+import           Data.Monoid
+import           Data.Text ( Text )
 
-import Database.Datalog.Errors
-import Database.Datalog.Relation
+import           Prelude
+
+import           Database.Datalog.Errors
+import           Database.Datalog.Relation
 
 -- | A wrapper around lists that lets us more easily hide length
 -- checks
