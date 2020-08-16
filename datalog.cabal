@@ -1,14 +1,14 @@
 name:                datalog
-version:             0.2.0.2
+version:             1.0
 synopsis:            An implementation of datalog in Haskell
 license:             BSD3
 license-file:        LICENSE
 author:              Tristan Ravitch
-maintainer:          tristan@nochair.net
+maintainer:          tristan@ravit.ch
 category:            Database
 build-type:          Simple
 cabal-version:       >=1.10
-tested-with: GHC == 7.4.2, GHC == 7.6.3, GHC == 7.8.4, GHC == 7.10.2, GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.4, GHC == 8.6.3
+tested-with: GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.4, GHC == 8.6.3
 description: This is an implementation of datalog in pure Haskell.
              It is implemented as a library and can be used from within
              any Haskell application.  As a consequence, it supports both
@@ -25,19 +25,24 @@ library
                    Database.Datalog.Errors
                    Database.Datalog.Evaluate
                    Database.Datalog.MagicSets
-                   Database.Datalog.Relation
+                   Database.Datalog.Panic
+                   Database.Datalog.RelationSchema
                    Database.Datalog.Rules
                    Database.Datalog.Stratification
+                   Database.Datalog.Tuple
   build-depends: base == 4.*,
+                 primitive >= 0.5 && < 0.8,
                  containers,
                  unordered-containers,
                  hashable,
                  exceptions >= 0.5 && < 0.11,
-                 text,
-                 transformers >= 0.3 && < 0.6,
-                 vector >= 0.9 && < 0.13
+                 panic >= 0.4 && < 0.5,
+                 text >= 1 && < 2,
+                 mtl >= 2 && < 3,
+                 vector >= 0.9 && < 0.13,
+                 parameterized-utils
   hs-source-dirs: src
-  ghc-options: -Wall
+  ghc-options: -Wall -Wcompat
 
 executable datalog-repl
   default-language: Haskell2010
@@ -45,10 +50,10 @@ executable datalog-repl
   other-modules: Parser, Commands
   hs-source-dirs: tools/repl
   ghc-options: -Wall
-  build-depends: base == 4.*,
+  build-depends: base,
                  datalog,
                  containers,
-                 exceptions >= 0.5 && < 0.11,
+                 exceptions,
                  hashable,
                  haskeline,
                  parsec,
@@ -63,9 +68,9 @@ test-suite NQueensTest
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: NQueens.hs
-  ghc-options: -Wall
+  ghc-options: -Wall -rtsopts
   build-depends: datalog,
-                 base == 4.*,
+                 base,
                  text,
                  containers,
                  hashable,
@@ -80,7 +85,7 @@ test-suite AncestorTest
   main-is: AncestorTest.hs
   ghc-options: -Wall
   build-depends: datalog,
-                 base == 4.*,
+                 base,
                  text,
                  containers,
                  test-framework,
@@ -94,7 +99,7 @@ test-suite WorksForTest
   main-is: WorksForTest.hs
   ghc-options: -Wall
   build-depends: datalog,
-                 base == 4.*,
+                 base,
                  text,
                  containers,
                  hashable,

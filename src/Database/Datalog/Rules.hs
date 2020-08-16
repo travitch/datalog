@@ -46,6 +46,7 @@ import qualified Data.HashMap.Strict as HM
 import           Data.List ( intercalate, groupBy, sortBy )
 import           Data.Maybe ( mapMaybe )
 import           Data.Monoid
+import qualified Data.Parameterized.Context as Ctx
 import           Data.Text ( Text )
 import qualified Data.Text as T
 import           Text.Printf ( printf )
@@ -75,7 +76,7 @@ nextConditionalId = do
   put s { conditionalIdSource = cid + 1 }
   return cid
 
-data Term a = LogicVar !Text
+data Term a tp = LogicVar !Text
               -- ^ A basic logic variable.  Equality is based on the
               -- variable name.
             | BindVar !Text
@@ -84,65 +85,67 @@ data Term a = LogicVar !Text
             | Anything
               -- ^ A term that is allowed to take any value (this is
               -- sugar for a fresh logic variable)
-            | Atom a
+            | Atom (a tp)
               -- ^ A user-provided literal from the domain a
             | FreshVar !Int
               -- ^ A fresh logic variable, generated internally for
               -- each Anything occurrence.  Not exposed to the user
 
-instance (Show a) => Show (Term a) where
-  show (LogicVar t) = T.unpack t
-  show (BindVar t) = "??" ++ T.unpack t
-  show (Atom a) = show a
-  show Anything = "*"
-  show (FreshVar _) = "*"
+-- instance (Show a) => Show (Term a) where
+--   show (LogicVar t) = T.unpack t
+--   show (BindVar t) = "??" ++ T.unpack t
+--   show (Atom a) = show a
+--   show Anything = "*"
+--   show (FreshVar _) = "*"
 
-instance (Hashable a) => Hashable (Term a) where
-  hashWithSalt s (LogicVar t) =
-    s `hashWithSalt` t `hashWithSalt` (1 :: Int)
-  hashWithSalt s (BindVar t) =
-    s `hashWithSalt` t `hashWithSalt` (2 :: Int)
-  hashWithSalt s (Atom a) = s `hashWithSalt` a
-  hashWithSalt s Anything = s `hashWithSalt` (99 :: Int)
-  hashWithSalt s (FreshVar i) =
-    s `hashWithSalt` i `hashWithSalt` (22 :: Int)
+-- instance (Hashable a) => Hashable (Term a) where
+--   hashWithSalt s (LogicVar t) =
+--     s `hashWithSalt` t `hashWithSalt` (1 :: Int)
+--   hashWithSalt s (BindVar t) =
+--     s `hashWithSalt` t `hashWithSalt` (2 :: Int)
+--   hashWithSalt s (Atom a) = s `hashWithSalt` a
+--   hashWithSalt s Anything = s `hashWithSalt` (99 :: Int)
+--   hashWithSalt s (FreshVar i) =
+--     s `hashWithSalt` i `hashWithSalt` (22 :: Int)
 
-instance (Eq a) => Eq (Term a) where
-  (LogicVar t1) == (LogicVar t2) = t1 == t2
-  (BindVar t1) == (BindVar t2) = t1 == t2
-  (Atom a1) == (Atom a2) = a1 == a2
-  Anything == Anything = True
-  FreshVar i1 == FreshVar i2 = i1 == i2
-  _ == _ = False
+-- instance (Eq a) => Eq (Term a) where
+--   (LogicVar t1) == (LogicVar t2) = t1 == t2
+--   (BindVar t1) == (BindVar t2) = t1 == t2
+--   (Atom a1) == (Atom a2) = a1 == a2
+--   Anything == Anything = True
+--   FreshVar i1 == FreshVar i2 = i1 == i2
+--   _ == _ = False
 
-data Clause a = Clause { clauseRelation :: Relation
-                       , clauseTerms :: [Term a]
+data Clause r a tps = Clause { clauseRelation :: Relation tps
+                       , clauseTerms :: Ctx.Assignment (Term a) tps
                        }
 
-instance (Eq a) => Eq (Clause a) where
-  (Clause r1 ts1) == (Clause r2 ts2) = r1 == r2 && ts1 == ts2
+-- instance (Eq a) => Eq (Clause a) where
+--   (Clause r1 ts1) == (Clause r2 ts2) = r1 == r2 && ts1 == ts2
 
-instance (Show a) => Show (Clause a) where
-  show (Clause p ts) =
-    printf "%s(%s)" (show p) (intercalate ", " (map show ts))
+-- instance (Show a) => Show (Clause a) where
+--   show (Clause p ts) =
+--     printf "%s(%s)" (show p) (intercalate ", " (map show ts))
 
 
-data AdornedClause a = AdornedClause { adornedClauseRelation :: Relation
-                                     , adornedClauseTerms :: [(Term a, Adornment)]
-                                     }
+data AdornedClause r a tps =
+  AdornedClause { adornedClauseRelation :: Relation tps
+                , adornedClauseTerms :: Ctx.Assignment (Term a) tps
+                , adornments :: Ctx.Assignment Adornment tps
+                }
 
-instance (Eq a) => Eq (AdornedClause a) where
-  (AdornedClause r1 cs1) == (AdornedClause r2 cs2) = r1 == r2 && cs1 == cs2
+-- instance (Eq a) => Eq (AdornedClause a) where
+--   (AdornedClause r1 cs1) == (AdornedClause r2 cs2) = r1 == r2 && cs1 == cs2
 
-instance (Hashable a) => Hashable (AdornedClause a) where
-  hashWithSalt s (AdornedClause r ts) =
-    s `hashWithSalt` r `hashWithSalt` ts
+-- instance (Hashable a) => Hashable (AdornedClause a) where
+--   hashWithSalt s (AdornedClause r ts) =
+--     s `hashWithSalt` r `hashWithSalt` ts
 
-instance (Show a) => Show (AdornedClause a) where
-  show (AdornedClause p ats) =
-    printf "%s(%s)" (show p) (intercalate ", " (map showAT ats))
-    where
-      showAT (t, a) = printf "%s[%s]" (show t) (show a)
+-- instance (Show a) => Show (AdornedClause a) where
+--   show (AdornedClause p ats) =
+--     printf "%s(%s)" (show p) (intercalate ", " (map showAT ats))
+--     where
+--       showAT (t, a) = printf "%s[%s]" (show t) (show a)
 
 -- | Body clauses can be normal clauses, negated clauses, or
 -- conditionals.  Conditionals are arbitrary-arity (via a list)
@@ -172,10 +175,16 @@ instance (Hashable a, Hashable (ctype a)) => Hashable (Literal ctype a) where
   hashWithSalt s (ConditionalClause cid _ ts vm) =
     s `hashWithSalt` cid `hashWithSalt` ts `hashWithSalt` HM.size vm
 
-lit :: (E.MonadThrow m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
+lit :: (E.MonadThrow m)
+    => Relation tps
+    -> Ctx.Assignment (Term a) tps
+    -> QueryBuilder m a (Literal Clause a)
 lit p ts = return $ Literal $ Clause p ts
 
-negLit :: (E.MonadThrow m) => Relation -> [Term a] -> QueryBuilder m a (Literal Clause a)
+negLit :: (E.MonadThrow m)
+       => Relation tps
+       -> Ctx.Assignment (Term a) tps
+       -> QueryBuilder m a (Literal Clause a)
 negLit p ts = return $ NegatedLiteral $ Clause p ts
 
 cond1 :: (E.MonadThrow m, Eq a, Hashable a)

@@ -2,14 +2,15 @@
 module Database.Datalog.Errors ( DatalogError(..) ) where
 
 import Control.Exception
+import Data.Parameterized.Some ( Some(..) )
 import Data.Text ( Text )
 import Data.Typeable
 
-import Database.Datalog.Relation
+import qualified Database.Datalog.RelationSchema as DDR
 
-data DatalogError = SchemaError Relation
+data DatalogError r = SchemaError (Some (DDR.RelationSchema r))
                   | RelationExistsError Text
-                  | NoRelationError Relation
+                  | NoRelationError (Some (DDR.RelationSchema r))
                   | MissingQueryError
                   | ExtraQueryError
                   | StratificationError
@@ -18,6 +19,6 @@ data DatalogError = SchemaError Relation
                   | NoVariableBinding Text
                   | UnexpectedNegatedLiteral
                   | UnexpectedConditionalClause
-                  deriving (Typeable, Show)
+                  deriving (Show)
 
-instance Exception DatalogError
+instance (Typeable r) => Exception (DatalogError r)
