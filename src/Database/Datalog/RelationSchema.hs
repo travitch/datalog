@@ -1,11 +1,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeInType #-}
 module Database.Datalog.RelationSchema (
   RelationSchema(..),
   relationSchemaName,
   relationSchemaReprs
   ) where
 
+import           Data.Kind ( Type )
 import qualified Data.Parameterized.Classes as PC
 import qualified Data.Parameterized.Context as Ctx
 import qualified Data.Parameterized.TH.GADT as PTH
@@ -16,7 +18,7 @@ import           Database.Datalog.Adornment
 
 -- | A wrapper to expose the relation name to callers without
 -- revealing details of its implementation
-data RelationSchema r tps where
+data RelationSchema (r :: k -> Type) (tps :: Ctx.Ctx k) where
   RelationSchema :: Ctx.Assignment r tps -> T.Text -> RelationSchema r tps
   MagicRelationSchema :: Ctx.Assignment r tps -> T.Text -> BindingPattern -> RelationSchema r tps
 

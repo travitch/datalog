@@ -27,7 +27,7 @@ import qualified Data.Primitive.ByteArray as DP
 -- | A database tuple
 --
 -- The type parameters are phantom to support provably-safe indexing
-newtype Tuple (a :: k -> Type) tps = Tuple (VP.Vector Int)
+newtype Tuple (a :: k -> Type) (tps :: Ctx.Ctx k) = Tuple (VP.Vector Int)
   deriving (Eq, Ord, Show)
 
 instance H.Hashable (Tuple a tps) where

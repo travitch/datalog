@@ -1,16 +1,19 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeInType #-}
 module Database.Datalog.Errors ( DatalogError(..) ) where
 
 import Control.Exception
-import Data.Parameterized.Some ( Some(..) )
+import Data.Kind ( Type )
 import Data.Text ( Text )
 import Data.Typeable
 
 import qualified Database.Datalog.RelationSchema as DDR
 
-data DatalogError r = SchemaError (Some (DDR.RelationSchema r))
+data DatalogError k (r :: k -> Type ) = forall tps . SchemaError (DDR.RelationSchema r tps)
                   | RelationExistsError Text
-                  | NoRelationError (Some (DDR.RelationSchema r))
+                  | forall tps . NoRelationError (DDR.RelationSchema r tps)
                   | MissingQueryError
                   | ExtraQueryError
                   | StratificationError
@@ -19,6 +22,7 @@ data DatalogError r = SchemaError (Some (DDR.RelationSchema r))
                   | NoVariableBinding Text
                   | UnexpectedNegatedLiteral
                   | UnexpectedConditionalClause
-                  deriving (Show)
 
-instance (Typeable r) => Exception (DatalogError r)
+deriving instance Show (DatalogError k r)
+
+instance (Typeable k, Typeable r) => Exception (DatalogError k r)

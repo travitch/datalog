@@ -2,12 +2,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeInType #-}
 module Database.Datalog.Database (
   Relation,
   Database,
   DatabaseBuilder,
   -- * Functions
   makeDatabase,
+  lookupRelation,
   addRelation,
   assertFact,
   databaseRelations,
@@ -27,6 +29,7 @@ import qualified Control.Monad.State.Strict as CMS
 import qualified Data.Foldable as F
 import           Data.Functor.Const ( Const(..) )
 import qualified Data.HashSet as HS
+import           Data.Kind ( Type )
 import qualified Data.Map.Strict as Map
 import qualified Data.Parameterized.Classes as PC
 import qualified Data.Parameterized.Context as Ctx
@@ -52,7 +55,7 @@ data Relation a r tps =
            }
 
 -- | A database is a collection of facts organized into relations
-data Database a r =
+data Database (a :: k -> Type) (r :: k -> Type) =
   Database { relations :: MapF.MapF (DDR.RelationSchema r) (Relation a r)
            -- ^ The relation store containing (unboxed) tuples
            , atomStore :: MapF.MapF r (AtomStore a)
@@ -80,6 +83,9 @@ newtype DatabaseBuilder m a r v =
            , E.MonadThrow
            )
 
+lookupRelation :: (PC.OrdF r) => DDR.RelationSchema r tps -> Database a r -> Maybe (Relation a r tps)
+lookupRelation schema db = MapF.lookup schema (relations db)
+
 emptyDatabase :: Database a r
 emptyDatabase = Database { relations = MapF.empty
                          , atomStore = MapF.empty
@@ -96,8 +102,8 @@ makeDatabase b = CMS.execStateT (unDBB b) emptyDatabase
 -- | Add a relation to the 'Database'.  If the relation exists, an
 -- error will be raised.  The function returns a 'DDR.RelationSchema' that
 -- can be used in conjuction with 'addTuple'.
-addRelation :: forall m a r tps
-             . (E.MonadThrow m, Typeable r, PC.OrdF r)
+addRelation :: forall m k (a :: k -> Type) (r :: k -> Type) tps
+             . (E.MonadThrow m, Typeable k, Typeable r, PC.OrdF r)
             => T.Text
             -> Ctx.Assignment r tps
             -> DatabaseBuilder m a r (DDR.RelationSchema r tps)
@@ -105,7 +111,7 @@ addRelation name reprs = do
   rm <- CMS.gets relations
   let relNames = fmap (viewSome DDR.relationSchemaName) (MapF.keys rm)
   case name `elem` relNames of
-    True -> E.throwM (RelationExistsError @r name)
+    True -> E.throwM (RelationExistsError @k @r name)
     False -> do
       let r = Relation { relationSchema = rel
                        , relationData = HS.empty
@@ -235,11 +241,14 @@ databaseRelations :: Database a r -> [Some (DDR.RelationSchema r)]
 databaseRelations db = MapF.keys (relations db)
 
 -- | Get all of the tuples for the given predicate/relation in the database.
-dataForRelation :: (E.MonadThrow m, PC.OrdF r, Typeable r)
-                => Database a r -> DDR.RelationSchema r tps -> m [DDT.Tuple a tps]
+dataForRelation :: forall m k (a :: k -> Type) (r :: k -> Type) tps
+                 . (E.MonadThrow m, PC.OrdF r, Typeable k, Typeable r)
+                => Database a r
+                -> DDR.RelationSchema r tps
+                -> m [DDT.Tuple a tps]
 dataForRelation db rel =
   case MapF.lookup rel (relations db) of
-    Nothing -> E.throwM $ NoRelationError (Some rel)
+    Nothing -> E.throwM $ NoRelationError @k @r rel
     Just r -> return (F.toList (relationData r))
 
 databaseHasDelta :: Database a r -> Bool

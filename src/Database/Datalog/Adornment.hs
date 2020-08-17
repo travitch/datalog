@@ -22,12 +22,12 @@ instance Show BindingPattern where
 instance Hashable BindingPattern where
   hashWithSalt s (BindingPattern bs) = s `hashWithSalt` bs
 
-data Adornment = Free !Int -- ^ The index to bind a free variable
-               | BoundAtom
-               | Bound !Int -- ^ The index to look for the binding of this variable
-               deriving (Eq, Show)
+data Adornment tp = Free !Int -- ^ The index to bind a free variable
+                  | BoundAtom
+                  | Bound !Int -- ^ The index to look for the binding of this variable
+                  deriving (Eq, Show)
 
-instance Hashable Adornment where
+instance Hashable (Adornment tp) where
   hashWithSalt s BoundAtom = s `hashWithSalt` (7776 :: Int)
   hashWithSalt s (Free i) =
     s `hashWithSalt` (1 :: Int) `hashWithSalt` i
