@@ -40,7 +40,7 @@ import           Data.Typeable ( Typeable )
 
 import           Prelude
 
-import           Database.Datalog.Errors
+import qualified Database.Datalog.Errors as DDE
 import qualified Database.Datalog.RelationSchema as DDR
 import qualified Database.Datalog.Tuple as DDT
 import qualified Database.Datalog.Panic as DDP
@@ -111,7 +111,7 @@ addRelation name reprs = do
   rm <- CMS.gets relations
   let relNames = fmap (viewSome DDR.relationSchemaName) (MapF.keys rm)
   case name `elem` relNames of
-    True -> E.throwM (RelationExistsError @k @r name)
+    True -> E.throwM (DDE.RelationExistsError @k @r name)
     False -> do
       let r = Relation { relationSchema = rel
                        , relationData = HS.empty
@@ -248,7 +248,7 @@ dataForRelation :: forall m k (a :: k -> Type) (r :: k -> Type) tps
                 -> m [DDT.Tuple a tps]
 dataForRelation db rel =
   case MapF.lookup rel (relations db) of
-    Nothing -> E.throwM $ NoRelationError @k @r rel
+    Nothing -> E.throwM $ DDE.NoRelationError @k @r rel
     Just r -> return (F.toList (relationData r))
 
 databaseHasDelta :: Database a r -> Bool
