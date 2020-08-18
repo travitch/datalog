@@ -12,7 +12,6 @@
 -- FIXME: Add an assertion to say that ConditionalClauses cannot have
 -- Free variables.
 module Database.Datalog.Rules (
-  Adornment(..),
   Term(..),
   Clause(..),
   AdornedClause(..),
@@ -47,24 +46,22 @@ import qualified Data.Parameterized.Context as Ctx
 import qualified Data.Parameterized.Map as MapF
 import           Data.Parameterized.Some ( Some(..), mapSome )
 import qualified Data.Parameterized.TraversableFC as FC
-import           Data.Text ( Text )
 import qualified Data.Text as T
 import           Data.Typeable ( Typeable )
-import           Text.Printf ( printf )
 
 import           Prelude
 
-import           Database.Datalog.Adornment
-import           Database.Datalog.Database
-import           Database.Datalog.Errors
+import qualified Database.Datalog.Adornment as DDA
+import qualified Database.Datalog.Database as DDD
+import qualified Database.Datalog.Errors as DDE
 import qualified Database.Datalog.Panic as DDP
-import           Database.Datalog.RelationSchema
+import qualified Database.Datalog.RelationSchema as DDR
 
 -- import Debug.Trace
 -- debug = flip trace
 
 data QueryState (a :: k -> Type) (r :: k -> Type) =
-  QueryState { intensionalDatabase :: Database a r
+  QueryState { intensionalDatabase :: DDD.Database a r
              , queryRules :: [QueryRule a r]
              }
 
@@ -102,15 +99,15 @@ data Term a tp where
   Anything :: Term a tp
 
 data Clause a r tps where
-  Clause :: RelationSchema r tps -> Ctx.Assignment (Term a) tps -> Clause a r tps
+  Clause :: DDR.RelationSchema r tps -> Ctx.Assignment (Term a) tps -> Clause a r tps
 
 clauseTerms :: Clause a r tps -> Ctx.Assignment (Term a) tps
 clauseTerms (Clause _schema terms) = terms
 
 data AdornedClause a r tps where
-  AdornedClause :: RelationSchema r tps -> Ctx.Assignment (Term a) tps -> Ctx.Assignment Adornment tps -> AdornedClause a r tps
+  AdornedClause :: DDR.RelationSchema r tps -> Ctx.Assignment (Term a) tps -> Ctx.Assignment DDA.Adornment tps -> AdornedClause a r tps
 
-adornedClauseSchema :: AdornedClause a r tps -> RelationSchema r tps
+adornedClauseSchema :: AdornedClause a r tps -> DDR.RelationSchema r tps
 adornedClauseSchema (AdornedClause schema _terms _adornments) = schema
 
 -- | Body clauses can be normal clauses, negated clauses, or
@@ -123,12 +120,12 @@ data Literal clause a r tps where
   NegatedLiteral :: clause a r tps -> Literal clause a r tps
   ConditionalClause :: (Ctx.Assignment a tps -> Bool) -> Ctx.Assignment (Term a) tps -> Literal clause a r tps
 
-lit :: RelationSchema r tps
+lit :: DDR.RelationSchema r tps
     -> Ctx.Assignment (Term a) tps
     -> Literal Clause a r tps
 lit p ts = Literal $ Clause p ts
 
-negLit :: RelationSchema r tps
+negLit :: DDR.RelationSchema r tps
        -> Ctx.Assignment (Term a) tps
        -> Literal Clause a r tps
 negLit p ts = NegatedLiteral $ Clause p ts
@@ -156,7 +153,7 @@ infixr 0 |-
 
 -- | Assert a rule
 (|-), assertRule :: (E.MonadThrow m)
-                 => (RelationSchema r tps, Ctx.Assignment (Term a) tps)
+                 => (DDR.RelationSchema r tps, Ctx.Assignment (Term a) tps)
                  -- ^ The rule head
                  -> Ctx.Assignment (Literal Clause a r) ctx
                  -- ^ Body literals
@@ -201,21 +198,21 @@ freshenVars l =
 relationPredicateFromName :: forall k m (a :: k -> Type) r tps
                            . (E.MonadThrow m, PC.OrdF r, Typeable r, Typeable k)
                           => Ctx.Assignment r tps
-                          -> Text
-                          -> QueryBuilder m a r (RelationSchema r tps)
+                          -> T.Text
+                          -> QueryBuilder m a r (DDR.RelationSchema r tps)
 relationPredicateFromName reprs name = do
-  let rel = RelationSchema reprs name
+  let rel = DDR.RelationSchema reprs name
   idb <- CMS.gets intensionalDatabase
-  case lookupRelation rel idb of
-    Nothing -> E.throwM (NoRelationError rel)
+  case DDD.lookupRelation rel idb of
+    Nothing -> E.throwM (DDE.NoRelationError rel)
     Just _r -> return rel
 
 -- | Create a new predicate that will be referenced by an EDB rule
 inferencePredicate :: (E.MonadThrow m)
                       => Ctx.Assignment r tps
                       -> T.Text
-                      -> QueryBuilder m a r (RelationSchema r tps)
-inferencePredicate reprs name = return (RelationSchema reprs name)
+                      -> QueryBuilder m a r (DDR.RelationSchema r tps)
+inferencePredicate reprs name = return (DDR.RelationSchema reprs name)
 
 -- | A partial tuple records the atoms in a tuple (with their indices
 -- in the tuple).  These are primarily used in database queries.
@@ -239,7 +236,7 @@ queryToPartialTuple (Query c) =
 
 -- | Turn a Clause into a Query.  This is meant to be the last
 -- statement in a QueryBuilder monad.
-issueQuery :: (E.MonadThrow m) => RelationSchema r tps -> Ctx.Assignment (Term a) tps -> QueryBuilder m a r (Query a r tps)
+issueQuery :: (E.MonadThrow m) => DDR.RelationSchema r tps -> Ctx.Assignment (Term a) tps -> QueryBuilder m a r (Query a r tps)
 issueQuery r ts = return $ Query $ Clause r ts
 
 
@@ -250,7 +247,7 @@ issueQuery r ts = return $ Query $ Clause r ts
 -- appear) before being returned.
 runQuery :: (E.MonadThrow m)
          => QueryBuilder m a r (Query a r tps)
-         -> Database a r
+         -> DDD.Database a r
          -> m (Query a r tps, [QueryRule a r])
 runQuery qm idb = do
   (q, QueryState _ rs) <- CMS.runStateT (unQB qm) (QueryState idb [])
@@ -264,7 +261,7 @@ partitionRules = groupBy gcmp . sortBy scmp
     scmp = compare `on` (mapSome adornedClauseSchema . ruleHead)
     gcmp = (==) `on` (mapSome adornedClauseSchema . ruleHead)
 
-queryPredicate :: Query a r tps -> RelationSchema r tps
+queryPredicate :: Query a r tps -> DDR.RelationSchema r tps
 queryPredicate (Query (Clause schema _terms)) = schema
 
 -- | Apply bindings to a query
