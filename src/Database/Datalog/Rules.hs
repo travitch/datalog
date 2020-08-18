@@ -39,6 +39,7 @@ module Database.Datalog.Rules (
 import qualified Control.Monad.Catch as E
 import qualified Control.Monad.State.Strict as CMS
 import           Data.Function ( on )
+import qualified Data.Functor.Identity as DFI
 import           Data.Kind ( Type )
 import           Data.List ( groupBy, sortBy )
 import qualified Data.Parameterized.Classes as PC
@@ -54,9 +55,10 @@ import           Text.Printf ( printf )
 import           Prelude
 
 import           Database.Datalog.Adornment
-import           Database.Datalog.RelationSchema
-import           Database.Datalog.Errors
 import           Database.Datalog.Database
+import           Database.Datalog.Errors
+import qualified Database.Datalog.Panic as DDP
+import           Database.Datalog.RelationSchema
 
 -- import Debug.Trace
 -- debug = flip trace
@@ -265,23 +267,22 @@ partitionRules = groupBy gcmp . sortBy scmp
 queryPredicate :: Query a r tps -> RelationSchema r tps
 queryPredicate (Query (Clause schema _terms)) = schema
 
-data QueryBinding a tp where
-  QueryBinding :: T.Text -> a tp -> QueryBinding a tp
-
 -- | Apply bindings to a query
-bindQuery :: Query a r tps -> [Some (QueryBinding a)] -> Query a r tps
-bindQuery = undefined
-
--- bindQuery (Query (Clause r ts)) bs =
---   Query $ Clause r $ foldr applyBinding [] ts
---   where
---     applyBinding t acc =
---       case t of
---         LogicVar _ -> t : acc
---         BindVar name ->
---           case lookup name bs of
---             Nothing -> error ("No binding provided for BindVar " ++ show name)
---             Just b -> Atom b : acc
---         Anything -> t : acc
---         Atom _ -> t : acc
---         FreshVar _ -> error "Users cannot provide FreshVars"
+bindQuery :: forall a r tps
+           . Query a r tps
+          -> MapF.MapF (Ctx.Index tps) a
+          -> Query a r tps
+bindQuery (Query (Clause schema terms)) bindings =
+  Query (Clause schema (DFI.runIdentity (Ctx.traverseWithIndex bindVariable terms)))
+  where
+    bindVariable :: forall tp . Ctx.Index tps tp -> Term a tp -> DFI.Identity (Term a tp)
+    bindVariable idx t =
+      case t of
+        LogicVar {} -> return t
+        Anything -> return t
+        Atom {} -> return t
+        BindVar _name ->
+          case MapF.lookup idx bindings of
+            Nothing -> return t
+            Just val -> return (Atom val)
+        FreshVar {} -> DDP.panic DDP.DatalogCore "bindQuery" ["FreshVar should not be exported to users"]
