@@ -75,9 +75,6 @@ newtype QueryBuilder m a r v =
            , E.MonadThrow
            )
 
-data Binder tp where
-  Binder :: T.Text -> Binder tp
-
 -- | Rules provided by the user
 --
 -- This is the initial form of a rule before it has been analyzed and compiled
@@ -144,9 +141,6 @@ data Rule a r where
 
 ruleHead :: Rule a r -> Some (AdornedClause a r)
 ruleHead (Rule hd _lits) = Some hd
-
-ruleBody :: Rule a r -> Some (Ctx.Assignment (Literal AdornedClause a r))
-ruleBody (Rule _hd lits) = Some lits
 
 newtype Query a r tps = Query { unQuery :: Clause a r tps }
 infixr 0 |-
